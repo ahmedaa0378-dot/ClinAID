@@ -1,12 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Clock,
-  Mail,
-  ArrowRight,
-  Building,
-} from "lucide-react";
+import { Clock, Mail, ArrowRight, Building } from "lucide-react";
 
 export default function PendingApprovalPage() {
   return (
@@ -19,7 +14,7 @@ export default function PendingApprovalPage() {
       {/* Header */}
       <h1 className="text-2xl font-bold text-gray-900 mb-2">Account Pending Approval</h1>
       <p className="text-gray-500 mb-6">
-        Your professor account has been created and is awaiting approval from your institution's administrator.
+        Your professor account has been created and is awaiting approval from your institution administrator.
       </p>
 
       {/* Status Card */}
@@ -46,7 +41,7 @@ export default function PendingApprovalPage() {
             </div>
             <div>
               <p className="font-medium text-gray-900">Admin Review</p>
-              <p className="text-sm text-gray-500">Your institution's admin will review your registration details</p>
+              <p className="text-sm text-gray-500">Your institution admin will review your registration</p>
             </div>
           </div>
           <div className="flex items-start gap-4">
@@ -55,7 +50,7 @@ export default function PendingApprovalPage() {
             </div>
             <div>
               <p className="font-medium text-gray-900">Email Notification</p>
-              <p className="text-sm text-gray-500">You'll receive an email once your account is approved</p>
+              <p className="text-sm text-gray-500">You will receive an email once approved</p>
             </div>
           </div>
           <div className="flex items-start gap-4">
@@ -64,7 +59,7 @@ export default function PendingApprovalPage() {
             </div>
             <div>
               <p className="font-medium text-gray-900">Start Teaching</p>
-              <p className="text-sm text-gray-500">Create courses, manage students, and offer consultations</p>
+              <p className="text-sm text-gray-500">Create courses and manage students</p>
             </div>
           </div>
         </div>
@@ -98,8 +93,7 @@ export default function PendingApprovalPage() {
       {/* Help */}
       <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <p className="text-sm text-blue-800">
-          <strong>Need faster approval?</strong><br />
-          Contact your institution's admin directly or reach out to{" "}
+          Need faster approval? Contact your institution admin or email{" "}
           <a href="mailto:support@clinaid.com" className="text-blue-700 underline">
             support@clinaid.com
           </a>
