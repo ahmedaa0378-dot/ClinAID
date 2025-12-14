@@ -63,7 +63,7 @@ export default function AdminLayout({
         <div className="flex flex-col h-full p-6">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-8">
-            <img src="/logo.png" alt="ClinAid" className="h-14 w-14 object-contain" />
+            <img src="/logo.png" alt="ClinAid" className="h-16 w-16 object-contain" />
             <div>
               <span className="text-white font-bold text-xl">ClinAid</span>
               <p className="text-purple-200 text-xs">College Admin</p>
