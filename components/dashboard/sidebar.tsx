@@ -60,7 +60,7 @@ export function Sidebar() {
             <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center">
               <span className="text-[#065F46] font-bold text-xl">M</span>
             </div>
-            <span className="text-white font-bold text-xl">MedLearn</span>
+            <span className="text-white font-bold text-xl">ClinAid</span>
           </div>
 
           {/* Navigation */}

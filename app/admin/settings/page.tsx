@@ -46,7 +46,7 @@ export default function SettingsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
-  const apiKey = "sk_live_medlearn_abc123xyz789def456";
+  const apiKey = "sk_live_clinaid_abc123xyz789def456";
 
   const handleSave = () => {
     setShowSaveSuccess(true);
@@ -478,7 +478,7 @@ export default function SettingsPage() {
                       <span className="text-sm font-medium text-blue-700">API Documentation</span>
                     </div>
                     <p className="text-sm text-blue-600">
-                      View our API docs at docs.medlearn.com/api
+                      View our API docs at docs.clinaid.com/api
                     </p>
                   </div>
                 </div>

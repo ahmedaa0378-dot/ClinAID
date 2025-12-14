@@ -155,7 +155,7 @@ export default function PlatformSettingsPage() {
                     </label>
                     <input
                       type="text"
-                      defaultValue="MedLearn"
+                      defaultValue="ClinAid"
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500"
                     />
                   </div>
@@ -165,7 +165,7 @@ export default function PlatformSettingsPage() {
                     </label>
                     <input
                       type="url"
-                      defaultValue="https://medlearn.com"
+                      defaultValue="https://clinaid.com"
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500"
                     />
                   </div>
@@ -175,7 +175,7 @@ export default function PlatformSettingsPage() {
                     </label>
                     <input
                       type="email"
-                      defaultValue="support@medlearn.com"
+                      defaultValue="support@clinaid.com"
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500"
                     />
                   </div>
@@ -387,7 +387,7 @@ export default function PlatformSettingsPage() {
                       </label>
                       <input
                         type="email"
-                        defaultValue="noreply@medlearn.com"
+                        defaultValue="noreply@clinaid.com"
                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500"
                       />
                     </div>
@@ -397,7 +397,7 @@ export default function PlatformSettingsPage() {
                       </label>
                       <input
                         type="text"
-                        defaultValue="MedLearn Platform"
+                        defaultValue="ClinAid Platform"
                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500"
                       />
                     </div>
@@ -677,7 +677,7 @@ export default function PlatformSettingsPage() {
                     <span className="font-medium text-blue-700">Developer Documentation</span>
                   </div>
                   <p className="text-sm text-blue-600 mb-3">
-                    Complete API reference available at docs.medlearn.com/api
+                    Complete API reference available at docs.clinaid.com/api
                   </p>
                   <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
                     View Documentation

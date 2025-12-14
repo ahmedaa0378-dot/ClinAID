@@ -152,11 +152,11 @@ export default function BrandingPage() {
                     className="flex-1 px-4 py-2 border border-gray-200 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                   <span className="px-4 py-2 bg-gray-100 border border-l-0 border-gray-200 rounded-r-lg text-gray-500">
-                    .medlearn.com
+                    .clinaid.com
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Your portal will be accessible at: https://{subdomain}.medlearn.com
+                  Your portal will be accessible at: https://{subdomain}.clinaid.com
                 </p>
               </div>
             </div>
@@ -368,7 +368,7 @@ export default function BrandingPage() {
                 <textarea
                   rows={3}
                   placeholder="Custom footer text for all system emails..."
-                  defaultValue={`${collegeName}\n${tagline}\nContact: support@${subdomain}.medlearn.com`}
+                  defaultValue={`${collegeName}\n${tagline}\nContact: support@${subdomain}.clinaid.com`}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
                 />
               </div>

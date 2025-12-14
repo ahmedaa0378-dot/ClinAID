@@ -371,7 +371,7 @@ export default function CollegesPage() {
                       </div>
                       <div>
                         <p className="font-medium text-gray-900">{college.name}</p>
-                        <p className="text-xs text-gray-500">{college.subdomain}.medlearn.com</p>
+                        <p className="text-xs text-gray-500">{college.subdomain}.clinaid.com</p>
                       </div>
                     </div>
                   </td>
@@ -497,7 +497,7 @@ export default function CollegesPage() {
                     className="flex-1 px-4 py-2 border border-gray-200 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-rose-500"
                   />
                   <span className="px-4 py-2 bg-gray-100 border border-l-0 border-gray-200 rounded-r-lg text-gray-500">
-                    .medlearn.com
+                    .clinaid.com
                   </span>
                 </div>
               </div>
@@ -589,8 +589,8 @@ export default function CollegesPage() {
                 <Building className="h-10 w-10 text-rose-600" />
               </div>
               <h4 className="text-xl font-bold text-gray-900">{selectedCollege.name}</h4>
-              <a href={`https://${selectedCollege.subdomain}.medlearn.com`} className="text-rose-600 text-sm hover:underline flex items-center justify-center gap-1">
-                {selectedCollege.subdomain}.medlearn.com
+              <a href={`https://${selectedCollege.subdomain}.clinaid.com`} className="text-rose-600 text-sm hover:underline flex items-center justify-center gap-1">
+                {selectedCollege.subdomain}.clinaid.com
                 <ExternalLink className="h-3 w-3" />
               </a>
               <div className="flex items-center justify-center gap-2 mt-2">
@@ -701,7 +701,7 @@ export default function CollegesPage() {
                     className="flex-1 px-4 py-2 border border-gray-200 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-rose-500"
                   />
                   <span className="px-4 py-2 bg-gray-100 border border-l-0 border-gray-200 rounded-r-lg text-gray-500">
-                    .medlearn.com
+                    .clinaid.com
                   </span>
                 </div>
               </div>

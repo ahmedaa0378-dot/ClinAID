@@ -230,7 +230,7 @@ export default function SuperAdminDashboard() {
                       </div>
                       <div>
                         <p className="font-medium text-gray-900">{college.name}</p>
-                        <p className="text-xs text-gray-500">{college.subdomain}.medlearn.com</p>
+                        <p className="text-xs text-gray-500">{college.subdomain}.clinaid.com</p>
                       </div>
                     </div>
                   </td>

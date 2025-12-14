@@ -212,7 +212,7 @@ export default function RegisterPage() {
           {step === 3 && "Complete your profile"}
         </h1>
         <p className="text-gray-500 mt-2">
-          {step === 1 && "Choose how you'll use MedLearn"}
+          {step === 1 && "Choose how you'll use ClinAid"}
           {step === 2 && "Find your medical school"}
           {step === 3 && "Just a few more details"}
         </p>
