@@ -59,12 +59,10 @@ export default function AuthLayout({
         {/* Content */}
         <div className="relative z-10">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-              <GraduationCap className="h-7 w-7 text-white" />
-            </div>
+            <img src="/logo.png" alt="ClinAid" className="h-16 w-16 object-contain" />
             <div>
-              <h1 className="text-2xl font-bold text-white">{branding.name}</h1>
-              <p className="text-white/70 text-sm">{branding.tagline}</p>
+              <h1 className="text-2xl font-bold text-white">ClinAid</h1>
+              <p className="text-white/70 text-sm">Learn | Collaborate | Excel</p>
             </div>
           </div>
         </div>

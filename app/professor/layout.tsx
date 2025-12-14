@@ -61,11 +61,9 @@ export default function ProfessorLayout({
         <div className="flex flex-col h-full p-6">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center">
-              <GraduationCap className="h-6 w-6 text-[#1E40AF]" />
-            </div>
+            <img src="/logo.png" alt="ClinAid" className="h-14 w-14 object-contain" />
             <div>
-              <span className="text-white font-bold text-xl">MedLearn</span>
+              <span className="text-white font-bold text-xl">ClinAid</span>
               <p className="text-blue-200 text-xs">Professor Portal</p>
             </div>
           </div>
