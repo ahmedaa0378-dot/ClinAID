@@ -6,18 +6,15 @@ import { Clock, Mail, ArrowRight, Building } from "lucide-react";
 export default function PendingApprovalPage() {
   return (
     <div className="text-center">
-      {/* Icon */}
       <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
         <Clock className="h-10 w-10 text-amber-600" />
       </div>
 
-      {/* Header */}
       <h1 className="text-2xl font-bold text-gray-900 mb-2">Account Pending Approval</h1>
       <p className="text-gray-500 mb-6">
         Your professor account has been created and is awaiting approval from your institution administrator.
       </p>
 
-      {/* Status Card */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-6">
         <div className="flex items-center justify-center gap-2 mb-4">
           <Building className="h-5 w-5 text-amber-600" />
@@ -31,7 +28,6 @@ export default function PendingApprovalPage() {
         </div>
       </div>
 
-      {/* What happens next */}
       <div className="bg-gray-50 rounded-xl p-6 text-left mb-6">
         <h3 className="font-semibold text-gray-900 mb-4">What happens next?</h3>
         <div className="space-y-4">
@@ -65,13 +61,11 @@ export default function PendingApprovalPage() {
         </div>
       </div>
 
-      {/* Timeline */}
       <div className="flex items-center justify-center gap-2 mb-6">
         <Clock className="h-4 w-4 text-gray-400" />
         <span className="text-sm text-gray-500">Typical approval time: 1-2 business days</span>
       </div>
 
-      {/* Actions */}
       <div className="space-y-3">
         <Link
           href="/login"
@@ -90,7 +84,6 @@ export default function PendingApprovalPage() {
         </a>
       </div>
 
-      {/* Help */}
       <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <p className="text-sm text-blue-800">
           Need faster approval? Contact your institution admin or email{" "}
