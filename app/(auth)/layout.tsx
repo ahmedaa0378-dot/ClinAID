@@ -128,7 +128,7 @@ export default function AuthLayout({
 
         {/* Footer */}
         <div className="p-6 text-center text-sm text-gray-500 border-t border-gray-200 bg-white">
-          <p>© 2024 ClinAid. All rights reserved.</p>
+          <p>© 2025 ClinAid. All rights reserved.</p>
           <div className="flex items-center justify-center gap-4 mt-2">
             <a href="#" className="hover:text-gray-700">Privacy Policy</a>
             <span>•</span>
