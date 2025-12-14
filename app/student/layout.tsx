@@ -54,7 +54,7 @@ export default function StudentLayout({
           {/* Logo */}
           <div className="p-6 border-b border-emerald-500">
             <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="ClinAid" className="h-14 w-14 object-contain" />
+              <img src="/logo.png" alt="ClinAid" className="h-16 w-16 object-contain" />
               <div>
                 <h1 className="text-xl font-bold text-white">ClinAid</h1>
                 <p className="text-emerald-200 text-xs">Student Portal</p>
