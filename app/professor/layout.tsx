@@ -5,157 +5,128 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
+  BookOpen,
   Users,
-  FolderOpen,
   ClipboardList,
   Calendar,
   BarChart3,
+  Settings,
+  LogOut,
   Menu,
   X,
-  HelpCircle,
-  Bell,
-  Search,
-  GraduationCap,
+  ChevronRight,
 } from "lucide-react";
 
-const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/professor" },
-  { icon: Users, label: "My Students", href: "/professor/students" },
-  { icon: FolderOpen, label: "Content", href: "/professor/content" },
-  { icon: ClipboardList, label: "Quizzes", href: "/professor/quizzes" },
-  { icon: Calendar, label: "Consultation Slots", href: "/professor/slots" },
-  { icon: BarChart3, label: "Analytics", href: "/professor/analytics" },
+const navigation = [
+  { name: "Dashboard", href: "/professor", icon: LayoutDashboard },
+  { name: "My Courses", href: "/professor/courses", icon: BookOpen },
+  { name: "Students", href: "/professor/students", icon: Users },
+  { name: "Assessments", href: "/professor/assessments", icon: ClipboardList },
+  { name: "Consultations", href: "/professor/consultations", icon: Calendar },
+  { name: "Analytics", href: "/professor/analytics", icon: BarChart3 },
+  { name: "Settings", href: "/professor/settings", icon: Settings },
 ];
 
-export default function ProfessorLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
+export default function ProfessorLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const isActive = (href: string) => {
-    if (href === "/professor") {
-      return pathname === "/professor";
-    }
-    return pathname.startsWith(href);
-  };
+  const NavContent = () => (
+    <>
+      {/* Logo */}
+      <div className="p-6 border-b border-gray-800">
+        <Link href="/professor" className="flex items-center gap-3">
+          <img src="/logo.png" alt="ClinAid" className="h-10 w-10 object-contain" />
+          <div>
+            <h1 className="text-xl font-bold text-white">ClinAid</h1>
+            <p className="text-blue-400 text-xs">Professor Portal</p>
+          </div>
+        </Link>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        {navigation.map((item) => {
+          const isActive = pathname === item.href || (item.href !== "/professor" && pathname.startsWith(item.href));
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
+              onClick={() => setSidebarOpen(false)}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all group ${
+                isActive
+                  ? "bg-gradient-to-r from-blue-500/20 to-cyan-500/20 text-white border border-blue-500/30"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800/50"
+              }`}
+            >
+              <item.icon className={`h-5 w-5 ${isActive ? "text-blue-400" : "text-gray-500 group-hover:text-gray-300"}`} />
+              <span className="font-medium">{item.name}</span>
+              {isActive && <ChevronRight className="h-4 w-4 ml-auto text-blue-400" />}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* User & Logout */}
+      <div className="p-4 border-t border-gray-800">
+        <div className="flex items-center gap-3 px-4 py-3 mb-2">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center justify-center text-white font-semibold">DP</div>
+          <div className="flex-1 min-w-0">
+            <p className="text-white font-medium truncate">Dr. Professor</p>
+            <p className="text-gray-500 text-sm truncate">prof@university.edu</p>
+          </div>
+        </div>
+        <Link href="/login" className="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors">
+          <LogOut className="h-5 w-5" />
+          <span className="font-medium">Sign Out</span>
+        </Link>
+      </div>
+    </>
+  );
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
-      {/* Mobile Menu Button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-[#1E40AF] text-white"
-      >
-        {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-      </button>
-
-      {/* Sidebar */}
-      <aside
-        className={`fixed top-0 left-0 h-full w-64 bg-gradient-to-b from-[#1E40AF] to-[#1E3A8A] transition-transform duration-300 ease-in-out z-40 ${
-          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        }`}
-      >
-        <div className="flex flex-col h-full p-6">
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-8">
-            <img src="/logo.png" alt="ClinAid" className="h-16 w-16 object-contain" />
-            <div>
-              <span className="text-white font-bold text-xl">ClinAid</span>
-              <p className="text-blue-200 text-xs">Professor Portal</p>
-            </div>
-          </div>
-
-          {/* Navigation */}
-          <nav className="flex-1 space-y-2">
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(item.href);
-
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  onClick={() => setIsOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg text-white transition-colors duration-200 ${
-                    active ? "bg-[#3B82F6]" : "hover:bg-[#2563EB]"
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
-                  <span className="font-medium">{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Switch to Student View */}
-          <div className="mt-auto">
-            <Link
-              href="/"
-              className="flex items-center gap-2 px-4 py-3 text-blue-200 hover:text-white transition-colors"
-            >
-              <span className="text-sm">← Switch to Student View</span>
-            </Link>
-            <div className="bg-[#2563EB] rounded-xl p-4 space-y-3 mt-2">
-              <div className="flex items-center gap-2">
-                <HelpCircle className="h-5 w-5 text-white" />
-                <span className="text-white font-semibold">Need Help?</span>
-              </div>
-              <p className="text-white/90 text-sm">Faculty support center</p>
-              <button className="w-full bg-white text-[#1E40AF] hover:bg-white/90 font-medium py-2 rounded-lg transition-colors">
-                Get Support
-              </button>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gray-100">
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:flex lg:flex-col lg:w-72 lg:fixed lg:inset-y-0 bg-gray-950 overflow-hidden">
+        {/* Glowing Orbs */}
+        <div className="absolute top-1/4 -left-20 w-60 h-60 bg-blue-500/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 -right-20 w-60 h-60 bg-cyan-500/20 rounded-full blur-3xl" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:30px_30px]" />
+        <div className="relative z-10 flex flex-col h-full">
+          <NavContent />
         </div>
       </aside>
 
-      {/* Mobile Overlay */}
-      {isOpen && (
-        <div
-          className="lg:hidden fixed inset-0 bg-black/50 z-30"
-          onClick={() => setIsOpen(false)}
-        />
+      {/* Mobile Header */}
+      <div className="lg:hidden bg-gray-950 text-white p-4 flex items-center justify-between sticky top-0 z-40">
+        <Link href="/professor" className="flex items-center gap-3">
+          <img src="/logo.png" alt="ClinAid" className="h-8 w-8 object-contain" />
+          <span className="font-bold">ClinAid</span>
+        </Link>
+        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-gray-800 rounded-lg">
+          {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+        </button>
+      </div>
+
+      {/* Mobile Sidebar */}
+      {sidebarOpen && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-gray-950 overflow-hidden">
+            <div className="absolute top-1/4 -left-20 w-60 h-60 bg-blue-500/20 rounded-full blur-3xl" />
+            <div className="absolute bottom-1/4 -right-20 w-60 h-60 bg-cyan-500/20 rounded-full blur-3xl" />
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:30px_30px]" />
+            <div className="relative z-10 flex flex-col h-full">
+              <NavContent />
+            </div>
+          </aside>
+        </div>
       )}
 
       {/* Main Content */}
-      <div className="lg:ml-64">
-        {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex-1 max-w-xl">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search students, content..."
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-4 ml-4">
-              <button className="relative p-2 hover:bg-gray-100 rounded-lg">
-                <Bell className="h-5 w-5 text-gray-600" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-              </button>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                  <span className="text-blue-700 font-medium">SS</span>
-                </div>
-                <div className="hidden sm:block">
-                  <p className="text-sm font-medium text-gray-900">Dr. Sarah Smith</p>
-                  <p className="text-xs text-gray-500">Cardiology</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Page Content */}
-        <main className="p-6">{children}</main>
-      </div>
+      <main className="lg:pl-72">
+        <div className="p-6 lg:p-8">{children}</div>
+      </main>
     </div>
   );
 }
