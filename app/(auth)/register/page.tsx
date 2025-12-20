@@ -121,9 +121,8 @@ const { error: profileError } = await supabase.from("users").insert({
 });
 
         if (profileError) {
-          console.error("Profile creation error:", profileError);
-          // User was created in auth, but profile failed - handle gracefully
-          setError("Account created but profile setup failed. Please contact support.");
+  console.error("Profile creation error:", profileError);
+  setError(`Profile failed: ${profileError.message || profileError.code || JSON.stringify(profileError)}`);
           setIsLoading(false);
           return;
         }
