@@ -117,7 +117,7 @@ const { error: profileError } = await supabase.from("users").insert({
   role: formData.role,
   college_id: formData.college_id || null,
   department_id: formData.department_id || null,
-  status: formData.role === "professor" ? "pending" : "active",
+  status: formData.role === "professor" ? "pending" : "approved",
 });
 
         if (profileError) {
