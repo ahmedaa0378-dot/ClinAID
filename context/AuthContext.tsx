@@ -7,13 +7,14 @@ import { useRouter } from "next/navigation";
 
 interface UserProfile {
   id: string;
+  auth_id: string;
   email: string;
-  first_name: string;
-  last_name: string;
+  full_name: string;
   role: "student" | "professor" | "college_admin" | "super_admin";
   college_id: string | null;
   department_id: string | null;
   avatar_url: string | null;
+  status: string;
 }
 
 interface AuthContextType {
