@@ -109,16 +109,16 @@ export default function RegisterPage() {
 
       if (authData.user) {
         // 2. Create user profile in users table
-        const { error: profileError } = await supabase.from("users").insert({
-          id: authData.user.id,
-          email: formData.email,
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          role: formData.role,
-          college_id: formData.college_id || null,
-          department_id: formData.department_id || null,
-          status: formData.role === "professor" ? "pending" : "active",
-        });
+const { error: profileError } = await supabase.from("users").insert({
+  id: authData.user.id,
+  auth_id: authData.user.id,
+  email: formData.email,
+  full_name: `${formData.first_name} ${formData.last_name}`,
+  role: formData.role,
+  college_id: formData.college_id || null,
+  department_id: formData.department_id || null,
+  status: formData.role === "professor" ? "pending" : "active",
+});
 
         if (profileError) {
           console.error("Profile creation error:", profileError);
