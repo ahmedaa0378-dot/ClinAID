@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard,
   Building2,
@@ -14,6 +15,7 @@ import {
   X,
   ChevronRight,
   Shield,
+  Loader2,
 } from "lucide-react";
 
 const navigation = [
@@ -26,7 +28,48 @@ const navigation = [
 
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { profile, user, loading, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const getInitials = () => {
+    if (profile?.full_name) {
+      const names = profile.full_name.split(" ");
+      if (names.length >= 2) {
+        return `${names[0][0]}${names[1][0]}`.toUpperCase();
+      }
+      return names[0].substring(0, 2).toUpperCase();
+    }
+    return "SA";
+  };
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    await signOut();
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-rose-600 mx-auto" />
+          <p className="mt-2 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    router.push("/login");
+    return null;
+  }
+
+  // Check if user is super admin
+  if (profile && profile.role !== "super_admin") {
+    router.push("/login");
+    return null;
+  }
 
   const NavContent = () => (
     <>
@@ -70,16 +113,26 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
       {/* User & Logout */}
       <div className="p-4 border-t border-gray-800">
         <div className="flex items-center gap-3 px-4 py-3 mb-2">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-rose-500 to-orange-500 flex items-center justify-center text-white font-semibold">SA</div>
+          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-rose-500 to-orange-500 flex items-center justify-center text-white font-semibold">
+            {getInitials()}
+          </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white font-medium truncate">Super Admin</p>
-            <p className="text-gray-500 text-sm truncate">admin@clinaid.com</p>
+            <p className="text-white font-medium truncate">{profile?.full_name || "Super Admin"}</p>
+            <p className="text-gray-500 text-sm truncate">{user?.email}</p>
           </div>
         </div>
-        <Link href="/login" className="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors">
-          <LogOut className="h-5 w-5" />
-          <span className="font-medium">Sign Out</span>
-        </Link>
+        <button
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="w-full flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
+        >
+          {loggingOut ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <LogOut className="h-5 w-5" />
+          )}
+          <span className="font-medium">{loggingOut ? "Signing out..." : "Sign Out"}</span>
+        </button>
       </div>
     </>
   );
@@ -88,7 +141,6 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
     <div className="min-h-screen bg-gray-100">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-72 lg:fixed lg:inset-y-0 bg-gray-950 overflow-hidden">
-        {/* Glowing Orbs */}
         <div className="absolute top-1/4 -left-20 w-60 h-60 bg-rose-500/20 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 -right-20 w-60 h-60 bg-orange-500/20 rounded-full blur-3xl" />
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:30px_30px]" />
