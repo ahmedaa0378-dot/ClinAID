@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { supabase } from "@/lib/supabase";
 import {
   Send,
   Bot,
@@ -16,7 +15,6 @@ import {
   Pill,
   Heart,
   Plus,
-  FileText,
 } from "lucide-react";
 
 interface Message {
@@ -24,7 +22,6 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
-  sources?: string[];
 }
 
 const quickPrompts = [
@@ -51,17 +48,15 @@ Guidelines:
 - Break down complex topics into digestible parts
 - Use analogies to explain difficult concepts
 - Keep responses concise but comprehensive
-- Format responses with clear structure when explaining complex topics
-- When course materials are provided, prioritize that information and reference it in your answer`;
+- Format responses with clear structure when explaining complex topics`;
 
 export default function AITutorPage() {
-  const { user, profile } = useAuth();
+  const { profile } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [showApiKeyInput, setShowApiKeyInput] = useState(true);
-  const [searchingContent, setSearchingContent] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -90,68 +85,6 @@ export default function AITutorPage() {
     }
   };
 
-  // Search professor content using embeddings
-  const searchProfessorContent = async (query: string): Promise<{ text: string; title: string }[]> => {
-    try {
-      // Get query embedding
-      const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "text-embedding-3-small",
-          input: query,
-        }),
-      });
-
-      const embeddingData = await embeddingResponse.json();
-
-      if (embeddingData.error) {
-        console.error("Embedding error:", embeddingData.error);
-        return [];
-      }
-
-      const queryEmbedding = embeddingData.data[0].embedding;
-
-      // Search for similar content using the function we created
-      const { data, error } = await supabase.rpc("match_content_embeddings", {
-        query_embedding: queryEmbedding,
-        match_threshold: 0.7,
-        match_count: 5,
-        p_professor_id: null, // Search all professors for now
-        p_subject_id: null,
-      });
-
-      if (error) {
-        console.error("Search error:", error);
-        return [];
-      }
-
-      if (data && data.length > 0) {
-        // Get content titles
-        const contentIds = [...new Set(data.map((d: any) => d.content_item_id))];
-        const { data: contentItems } = await supabase
-          .from("content_items")
-          .select("id, title")
-          .in("id", contentIds);
-
-        const titleMap = new Map(contentItems?.map((c: any) => [c.id, c.title]) || []);
-
-        return data.map((d: any) => ({
-          text: d.chunk_text,
-          title: titleMap.get(d.content_item_id) || "Course Material",
-        }));
-      }
-
-      return [];
-    } catch (error) {
-      console.error("Content search error:", error);
-      return [];
-    }
-  };
-
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!input.trim() || isLoading || !apiKey) return;
@@ -167,37 +100,17 @@ export default function AITutorPage() {
     const currentInput = input.trim();
     setInput("");
     setIsLoading(true);
-    setSearchingContent(true);
 
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
     }
 
     try {
-      // Step 1: Search professor content
-      const relevantContent = await searchProfessorContent(currentInput);
-      setSearchingContent(false);
-
-      // Step 2: Build context from found content
-      let contextMessage = "";
-      let sources: string[] = [];
-
-      if (relevantContent.length > 0) {
-        const uniqueTitles = [...new Set(relevantContent.map((c) => c.title))];
-        sources = uniqueTitles;
-
-        contextMessage = `\n\nRELEVANT COURSE MATERIALS:\n${relevantContent
-          .map((c, i) => `[${c.title}]: ${c.text}`)
-          .join("\n\n")}\n\nUse the above course materials to help answer the student's question. Reference the materials when applicable.`;
-      }
-
-      // Step 3: Build conversation history
       const conversationHistory = messages.map((msg) => ({
         role: msg.role as "user" | "assistant",
         content: msg.content,
       }));
 
-      // Step 4: Call OpenAI with context
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -207,7 +120,7 @@ export default function AITutorPage() {
         body: JSON.stringify({
           model: "gpt-4o-mini",
           messages: [
-            { role: "system", content: SYSTEM_PROMPT + contextMessage },
+            { role: "system", content: SYSTEM_PROMPT },
             ...conversationHistory,
             { role: "user", content: currentInput },
           ],
@@ -229,7 +142,6 @@ export default function AITutorPage() {
         role: "assistant",
         content: aiContent,
         timestamp: new Date(),
-        sources: sources.length > 0 ? sources : undefined,
       };
 
       setMessages((prev) => [...prev, aiMessage]);
@@ -244,7 +156,6 @@ export default function AITutorPage() {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
-      setSearchingContent(false);
     }
   };
 
@@ -264,7 +175,6 @@ export default function AITutorPage() {
     }
   };
 
-  // API Key Input Screen
   if (showApiKeyInput) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -273,7 +183,7 @@ export default function AITutorPage() {
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Setup AI Tutor</h2>
         <p className="text-gray-500 mb-6 text-center max-w-md">
-          Enter your OpenAI API key to start using the AI Tutor. Your key is stored locally and never sent to our servers.
+          Enter your OpenAI API key to start using the AI Tutor.
         </p>
         <div className="w-full max-w-md space-y-4">
           <input
@@ -290,17 +200,6 @@ export default function AITutorPage() {
           >
             Start Chatting
           </button>
-          <p className="text-xs text-gray-400 text-center">
-            Get your API key from{" "}
-            
-              href="https://platform.openai.com/api-keys"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-emerald-600 hover:underline"
-            >
-              platform.openai.com
-            </a>
-          </p>
         </div>
       </div>
     );
@@ -308,7 +207,6 @@ export default function AITutorPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -338,9 +236,7 @@ export default function AITutorPage() {
         </div>
       </div>
 
-      {/* Chat Container */}
       <div className="flex-1 bg-white rounded-2xl border border-gray-200 flex flex-col overflow-hidden">
-        {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center">
@@ -351,11 +247,8 @@ export default function AITutorPage() {
                 Hello{profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}! 👋
               </h2>
               <p className="text-gray-500 max-w-md mb-8">
-                I'm your AI medical tutor. I can search your course materials to give you personalized answers.
-                Ask me anything about your courses or medical concepts!
+                I'm your AI medical tutor. Ask me anything about medical concepts or request quizzes!
               </p>
-
-              {/* Quick Prompts */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-2xl">
                 {quickPrompts.map((item) => (
                   <button
@@ -374,9 +267,7 @@ export default function AITutorPage() {
               {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`flex gap-4 ${
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
+                  className={`flex gap-4 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   {message.role === "assistant" && (
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
@@ -385,28 +276,12 @@ export default function AITutorPage() {
                   )}
                   <div
                     className={`max-w-[75%] rounded-2xl px-4 py-3 ${
-                      message.role === "user"
-                        ? "bg-emerald-600 text-white"
-                        : "bg-gray-100 text-gray-900"
+                      message.role === "user" ? "bg-emerald-600 text-white" : "bg-gray-100 text-gray-900"
                     }`}
                   >
-                    {/* Sources Badge */}
-                    {message.sources && message.sources.length > 0 && (
-                      <div className="flex items-center gap-1 text-xs text-emerald-600 mb-2 flex-wrap">
-                        <FileText className="h-3 w-3" />
-                        <span>Based on: {message.sources.join(", ")}</span>
-                      </div>
-                    )}
                     <div className="whitespace-pre-wrap">{message.content}</div>
-                    <div
-                      className={`text-xs mt-2 ${
-                        message.role === "user" ? "text-emerald-200" : "text-gray-400"
-                      }`}
-                    >
-                      {message.timestamp.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                    <div className={`text-xs mt-2 ${message.role === "user" ? "text-emerald-200" : "text-gray-400"}`}>
+                      {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </div>
                   {message.role === "user" && (
@@ -416,7 +291,6 @@ export default function AITutorPage() {
                   )}
                 </div>
               ))}
-
               {isLoading && (
                 <div className="flex gap-4 justify-start">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
@@ -425,48 +299,38 @@ export default function AITutorPage() {
                   <div className="bg-gray-100 rounded-2xl px-4 py-3">
                     <div className="flex items-center gap-2 text-gray-500">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>
-                        {searchingContent ? "Searching course materials..." : "Thinking..."}
-                      </span>
+                      <span>Thinking...</span>
                     </div>
                   </div>
                 </div>
               )}
-
               <div ref={messagesEndRef} />
             </>
           )}
         </div>
 
-        {/* Input Area */}
         <div className="border-t border-gray-200 p-4">
           <form onSubmit={handleSubmit} className="flex gap-3">
-            <div className="flex-1 relative">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask me anything about medicine..."
-                rows={1}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                style={{ minHeight: "48px", maxHeight: "150px" }}
-              />
-            </div>
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask me anything about medicine..."
+              rows={1}
+              className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              style={{ minHeight: "48px", maxHeight: "150px" }}
+            />
             <button
               type="submit"
               disabled={!input.trim() || isLoading}
-              className="px-4 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+              className="px-4 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors"
             >
-              {isLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Send className="h-5 w-5" />
-              )}
+              {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
             </button>
           </form>
           <p className="text-xs text-gray-400 mt-2 text-center">
-            AI searches your course materials first, then uses medical knowledge to answer.
+            AI responses are for educational purposes only.
           </p>
         </div>
       </div>
