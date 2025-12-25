@@ -1,283 +1,290 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
 import {
-  Bot,
   Send,
-  Paperclip,
-  Mic,
-  MoreVertical,
+  Bot,
+  User,
+  Loader2,
+  Sparkles,
   BookOpen,
-  Lightbulb,
+  Brain,
   HelpCircle,
-  RefreshCw,
-  ThumbsUp,
-  ThumbsDown,
-  Copy,
-  Check,
+  Stethoscope,
+  Pill,
+  Heart,
+  Trash2,
+  Plus,
 } from "lucide-react";
 
 interface Message {
-  id: number;
+  id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  hasContext?: boolean;
 }
 
-const suggestedQuestions = [
-  { icon: BookOpen, text: "Explain the cardiac cycle in simple terms" },
-  { icon: Lightbulb, text: "What are the key symptoms of heart failure?" },
-  { icon: HelpCircle, text: "Help me understand ECG interpretation" },
-];
-
-const initialMessages: Message[] = [
-  {
-    id: 1,
-    role: "assistant",
-    content: "Hello! I'm your AI Medical Tutor. I'm here to help you understand complex medical concepts, answer your questions, and guide your learning journey. I have access to your course materials and can provide explanations tailored to your level.\n\nWhat would you like to learn about today?",
-    timestamp: new Date(),
-  },
+const quickPrompts = [
+  { icon: Brain, label: "Explain a concept", prompt: "Can you explain " },
+  { icon: HelpCircle, label: "Quiz me", prompt: "Quiz me on " },
+  { icon: BookOpen, label: "Summarize", prompt: "Summarize the key points of " },
+  { icon: Stethoscope, label: "Clinical case", prompt: "Give me a clinical case study about " },
+  { icon: Pill, label: "Drug info", prompt: "Explain the mechanism of action of " },
+  { icon: Heart, label: "Pathophysiology", prompt: "Explain the pathophysiology of " },
 ];
 
 export default function AITutorPage() {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [inputValue, setInputValue] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const { user, profile } = useAuth();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
+  // Generate session ID on mount
   useEffect(() => {
-    scrollToBottom();
+    setSessionId(crypto.randomUUID());
+  }, []);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!inputValue.trim()) return;
+  // Auto-resize textarea
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    e.target.style.height = "auto";
+    e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px";
+  };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!input.trim() || isLoading) return;
 
     const userMessage: Message = {
-      id: messages.length + 1,
+      id: crypto.randomUUID(),
       role: "user",
-      content: inputValue,
+      content: input.trim(),
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    setInputValue("");
-    setIsTyping(true);
+    setInput("");
+    setIsLoading(true);
 
-    // Simulate AI response (replace with actual API call later)
-    setTimeout(() => {
-      const aiResponse: Message = {
-        id: messages.length + 2,
+    // Reset textarea height
+    if (inputRef.current) {
+      inputRef.current.style.height = "auto";
+    }
+
+    try {
+      const response = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userMessage.content,
+          sessionId,
+          userId: user?.id,
+          courseContext: null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      const aiMessage: Message = {
+        id: crypto.randomUUID(),
         role: "assistant",
-        content: generateMockResponse(inputValue),
+        content: data.response,
+        timestamp: new Date(),
+        hasContext: data.hasContext,
+      };
+
+      setMessages((prev) => [...prev, aiMessage]);
+    } catch (error: any) {
+      const errorMessage: Message = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: "I apologize, but I encountered an error. Please try again.",
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, aiResponse]);
-      setIsTyping(false);
-    }, 1500);
-  };
-
-  const generateMockResponse = (question: string): string => {
-    const lowerQuestion = question.toLowerCase();
-    
-    if (lowerQuestion.includes("cardiac cycle") || lowerQuestion.includes("heart cycle")) {
-      return "The cardiac cycle refers to the sequence of events that occur during one complete heartbeat. It consists of two main phases:\n\n**1. Diastole (Relaxation Phase)**\n- The heart muscle relaxes\n- The atria and ventricles fill with blood\n- The AV valves (tricuspid and mitral) are open\n- The semilunar valves are closed\n\n**2. Systole (Contraction Phase)**\n- The heart muscle contracts\n- Blood is ejected from the ventricles\n- The AV valves close (producing the 'lub' sound)\n- The semilunar valves open\n\nThe average cardiac cycle lasts about 0.8 seconds at a resting heart rate of 75 beats per minute.\n\nWould you like me to explain any part in more detail?";
+      setMessages((prev) => [...prev, errorMessage]);
+      console.error("Chat error:", error);
+    } finally {
+      setIsLoading(false);
     }
-    
-    if (lowerQuestion.includes("ecg") || lowerQuestion.includes("electrocardiogram")) {
-      return "ECG (Electrocardiogram) interpretation involves analyzing the electrical activity of the heart. Here are the key components:\n\n**P Wave** - Atrial depolarization\n**PR Interval** - Time from atrial to ventricular depolarization (0.12-0.20s)\n**QRS Complex** - Ventricular depolarization (0.06-0.10s)\n**T Wave** - Ventricular repolarization\n**QT Interval** - Total ventricular activity\n\n**Normal Sinus Rhythm Criteria:**\n- Rate: 60-100 bpm\n- Regular rhythm\n- P wave before each QRS\n- Consistent PR interval\n\nWould you like me to explain any specific rhythm or abnormality?";
-    }
-    
-    if (lowerQuestion.includes("heart failure")) {
-      return "Heart failure occurs when the heart cannot pump blood effectively to meet the body's needs. Key symptoms include:\n\n**Left-Sided Heart Failure:**\n- Dyspnea (shortness of breath)\n- Orthopnea (difficulty breathing when lying flat)\n- Paroxysmal nocturnal dyspnea\n- Fatigue and weakness\n- Pulmonary congestion\n\n**Right-Sided Heart Failure:**\n- Peripheral edema (swelling in legs/ankles)\n- Jugular venous distension (JVD)\n- Hepatomegaly (enlarged liver)\n- Ascites (fluid in abdomen)\n\n**Common Causes:**\n- Coronary artery disease\n- Hypertension\n- Valvular heart disease\n- Cardiomyopathy\n\nWould you like to learn about the treatment approaches?";
-    }
-    
-    return "That's a great question! Based on your course materials, I can help you understand this concept better.\n\nTo provide you with the most accurate and relevant information, I'm analyzing the content from your enrolled courses. This topic relates to several key areas in your medical curriculum.\n\nCould you provide a bit more context about which specific aspect you'd like me to focus on? For example:\n- Are you preparing for an exam?\n- Do you need a clinical perspective?\n- Would you like practice questions on this topic?";
   };
 
-  const handleSuggestedQuestion = (question: string) => {
-    setInputValue(question);
+  const handleQuickPrompt = (prompt: string) => {
+    setInput(prompt);
+    inputRef.current?.focus();
   };
 
-  const copyToClipboard = (text: string, id: number) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleNewChat = () => {
+    setMessages([]);
+    setSessionId(crypto.randomUUID());
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      handleSubmit();
     }
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)]">
+    <div className="flex flex-col h-[calc(100vh-8rem)]">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">AI Tutor</h1>
-          <p className="text-gray-500 text-sm">Ask questions about your courses and get instant help</p>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <Sparkles className="h-6 w-6 text-emerald-500" />
+            AI Tutor
+          </h1>
+          <p className="text-gray-500">Your personal medical education assistant</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-            <RefreshCw className="h-5 w-5 text-gray-500" />
-          </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-            <MoreVertical className="h-5 w-5 text-gray-500" />
-          </button>
-        </div>
+        <button
+          onClick={handleNewChat}
+          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          New Chat
+        </button>
       </div>
 
       {/* Chat Container */}
-      <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
-        {/* Messages */}
+      <div className="flex-1 bg-white rounded-2xl border border-gray-200 flex flex-col overflow-hidden">
+        {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex gap-4 ${message.role === "user" ? "flex-row-reverse" : ""}`}
-            >
-              {/* Avatar */}
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  message.role === "assistant"
-                    ? "bg-emerald-100"
-                    : "bg-blue-100"
-                }`}
-              >
-                {message.role === "assistant" ? (
-                  <Bot className="h-5 w-5 text-emerald-600" />
-                ) : (
-                  <span className="text-blue-600 text-sm font-medium">JD</span>
-                )}
+          {messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center">
+              <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-2xl flex items-center justify-center mb-6">
+                <Bot className="h-10 w-10 text-white" />
               </div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                Hello{profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}! 👋
+              </h2>
+              <p className="text-gray-500 max-w-md mb-8">
+                I'm your AI medical tutor. Ask me anything about your courses, 
+                medical concepts, or request quizzes to test your knowledge.
+              </p>
 
-              {/* Message Content */}
-              <div
-                className={`flex flex-col max-w-[80%] ${
-                  message.role === "user" ? "items-end" : "items-start"
-                }`}
-              >
+              {/* Quick Prompts */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-2xl">
+                {quickPrompts.map((item) => (
+                  <button
+                    key={item.label}
+                    onClick={() => handleQuickPrompt(item.prompt)}
+                    className="flex items-center gap-2 px-4 py-3 bg-gray-50 hover:bg-emerald-50 border border-gray-200 hover:border-emerald-300 rounded-xl transition-colors text-left"
+                  >
+                    <item.icon className="h-5 w-5 text-emerald-600" />
+                    <span className="text-sm text-gray-700">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {messages.map((message) => (
                 <div
-                  className={`px-4 py-3 rounded-2xl ${
-                    message.role === "assistant"
-                      ? "bg-gray-100 text-gray-800 rounded-tl-none"
-                      : "bg-emerald-600 text-white rounded-tr-none"
+                  key={message.id}
+                  className={`flex gap-4 ${
+                    message.role === "user" ? "justify-end" : "justify-start"
                   }`}
                 >
-                  <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                </div>
-
-                {/* Message Actions (for AI messages) */}
-                {message.role === "assistant" && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <button
-                      onClick={() => copyToClipboard(message.content, message.id)}
-                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  {message.role === "assistant" && (
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                      <Bot className="h-5 w-5 text-white" />
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[75%] rounded-2xl px-4 py-3 ${
+                      message.role === "user"
+                        ? "bg-emerald-600 text-white"
+                        : "bg-gray-100 text-gray-900"
+                    }`}
+                  >
+                    {message.hasContext && message.role === "assistant" && (
+                      <div className="flex items-center gap-1 text-xs text-emerald-600 mb-2">
+                        <BookOpen className="h-3 w-3" />
+                        <span>Based on your course materials</span>
+                      </div>
+                    )}
+                    <div className="whitespace-pre-wrap">{message.content}</div>
+                    <div
+                      className={`text-xs mt-2 ${
+                        message.role === "user" ? "text-emerald-200" : "text-gray-400"
+                      }`}
                     >
-                      {copiedId === message.id ? (
-                        <Check className="h-4 w-4 text-emerald-500" />
-                      ) : (
-                        <Copy className="h-4 w-4 text-gray-400" />
-                      )}
-                    </button>
-                    <button className="p-1 hover:bg-gray-100 rounded transition-colors">
-                      <ThumbsUp className="h-4 w-4 text-gray-400" />
-                    </button>
-                    <button className="p-1 hover:bg-gray-100 rounded transition-colors">
-                      <ThumbsDown className="h-4 w-4 text-gray-400" />
-                    </button>
+                      {message.timestamp.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </div>
                   </div>
-                )}
-
-                <span className="text-xs text-gray-400 mt-1">
-                  {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              </div>
-            </div>
-          ))}
-
-          {/* Typing Indicator */}
-          {isTyping && (
-            <div className="flex gap-4">
-              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                <Bot className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div className="bg-gray-100 px-4 py-3 rounded-2xl rounded-tl-none">
-                <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  {message.role === "user" && (
+                    <div className="w-10 h-10 rounded-xl bg-gray-200 flex items-center justify-center flex-shrink-0">
+                      <User className="h-5 w-5 text-gray-600" />
+                    </div>
+                  )}
                 </div>
-              </div>
-            </div>
-          )}
+              ))}
 
-          <div ref={messagesEndRef} />
+              {isLoading && (
+                <div className="flex gap-4 justify-start">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                    <Bot className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="bg-gray-100 rounded-2xl px-4 py-3">
+                    <div className="flex items-center gap-2 text-gray-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Thinking...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </>
+          )}
         </div>
 
-        {/* Suggested Questions (show only if no user messages) */}
-        {messages.length === 1 && (
-          <div className="px-6 pb-4">
-            <p className="text-sm text-gray-500 mb-3">Suggested questions:</p>
-            <div className="flex flex-wrap gap-2">
-              {suggestedQuestions.map((q, index) => {
-                const Icon = q.icon;
-                return (
-                  <button
-                    key={index}
-                    onClick={() => handleSuggestedQuestion(q.text)}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-full text-sm text-gray-700 transition-colors"
-                  >
-                    <Icon className="h-4 w-4 text-emerald-600" />
-                    {q.text}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {/* Input Area */}
-        <div className="border-t border-gray-100 p-4">
-          <div className="flex items-end gap-3">
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-              <Paperclip className="h-5 w-5 text-gray-500" />
-            </button>
+        <div className="border-t border-gray-200 p-4">
+          <form onSubmit={handleSubmit} className="flex gap-3">
             <div className="flex-1 relative">
               <textarea
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Ask me anything about your courses..."
+                ref={inputRef}
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask me anything about medicine..."
                 rows={1}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                style={{ minHeight: "48px", maxHeight: "120px" }}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                style={{ minHeight: "48px", maxHeight: "150px" }}
               />
             </div>
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-              <Mic className="h-5 w-5 text-gray-500" />
-            </button>
             <button
-              onClick={handleSend}
-              disabled={!inputValue.trim()}
-              className={`p-3 rounded-xl transition-colors ${
-                inputValue.trim()
-                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
-              }`}
+              type="submit"
+              disabled={!input.trim() || isLoading}
+              className="px-4 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
             >
-              <Send className="h-5 w-5" />
+              {isLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
             </button>
-          </div>
+          </form>
           <p className="text-xs text-gray-400 mt-2 text-center">
-            AI Tutor uses your course materials to provide accurate, relevant answers
+            AI responses are for educational purposes only. Always verify with official sources.
           </p>
         </div>
       </div>
