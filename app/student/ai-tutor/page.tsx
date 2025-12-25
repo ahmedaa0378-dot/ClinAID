@@ -14,7 +14,6 @@ import {
   Stethoscope,
   Pill,
   Heart,
-  Trash2,
   Plus,
 } from "lucide-react";
 
@@ -23,7 +22,6 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
-  hasContext?: boolean;
 }
 
 const quickPrompts = [
@@ -35,35 +33,62 @@ const quickPrompts = [
   { icon: Heart, label: "Pathophysiology", prompt: "Explain the pathophysiology of " },
 ];
 
+const SYSTEM_PROMPT = `You are ClinAid AI Tutor, an expert medical education assistant designed to help medical students learn effectively.
+
+Your role:
+- Explain complex medical concepts in clear, understandable terms
+- Use clinical examples and case studies when helpful
+- Provide accurate, evidence-based medical information
+- Help students understand anatomy, physiology, pathology, pharmacology, and clinical medicine
+- Quiz students when they ask to be tested
+- Provide mnemonics and memory aids when appropriate
+
+Guidelines:
+- Be encouraging and supportive
+- Break down complex topics into digestible parts
+- Use analogies to explain difficult concepts
+- Keep responses concise but comprehensive
+- Format responses with clear structure when explaining complex topics`;
+
 export default function AITutorPage() {
-  const { user, profile } = useAuth();
+  const { profile } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [sessionId, setSessionId] = useState<string>("");
+  const [apiKey, setApiKey] = useState("");
+  const [showApiKeyInput, setShowApiKeyInput] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Generate session ID on mount
   useEffect(() => {
-    setSessionId(crypto.randomUUID());
+    // Check if API key is stored
+    const storedKey = localStorage.getItem("openai_api_key");
+    if (storedKey) {
+      setApiKey(storedKey);
+      setShowApiKeyInput(false);
+    }
   }, []);
 
-  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Auto-resize textarea
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
     e.target.style.height = "auto";
     e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px";
   };
 
+  const saveApiKey = () => {
+    if (apiKey.trim()) {
+      localStorage.setItem("openai_api_key", apiKey.trim());
+      setShowApiKeyInput(false);
+    }
+  };
+
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || !apiKey) return;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -73,50 +98,64 @@ export default function AITutorPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const currentInput = input.trim();
     setInput("");
     setIsLoading(true);
 
-    // Reset textarea height
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
     }
 
     try {
-      const response = await fetch("/api/ai/chat", {
+      // Build conversation history
+      const conversationHistory = messages.map((msg) => ({
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+      }));
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
         body: JSON.stringify({
-          message: userMessage.content,
-          sessionId,
-          userId: user?.id,
-          courseContext: null,
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            ...conversationHistory,
+            { role: "user", content: currentInput },
+          ],
+          temperature: 0.7,
+          max_tokens: 1500,
         }),
       });
 
       const data = await response.json();
 
       if (data.error) {
-        throw new Error(data.error);
+        throw new Error(data.error.message);
       }
+
+      const aiContent = data.choices?.[0]?.message?.content || "Sorry, I couldn't generate a response.";
 
       const aiMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: data.response,
+        content: aiContent,
         timestamp: new Date(),
-        hasContext: data.hasContext,
       };
 
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error: any) {
+      console.error("Chat error:", error);
       const errorMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: "I apologize, but I encountered an error. Please try again.",
+        content: `Error: ${error.message || "Failed to get response. Please check your API key."}`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
-      console.error("Chat error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -129,7 +168,6 @@ export default function AITutorPage() {
 
   const handleNewChat = () => {
     setMessages([]);
-    setSessionId(crypto.randomUUID());
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -138,6 +176,48 @@ export default function AITutorPage() {
       handleSubmit();
     }
   };
+
+  // API Key Input Screen
+  if (showApiKeyInput) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-2xl flex items-center justify-center mb-6">
+          <Bot className="h-10 w-10 text-white" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Setup AI Tutor</h2>
+        <p className="text-gray-500 mb-6 text-center max-w-md">
+          Enter your OpenAI API key to start using the AI Tutor. Your key is stored locally and never sent to our servers.
+        </p>
+        <div className="w-full max-w-md space-y-4">
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="sk-..."
+            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <button
+            onClick={saveApiKey}
+            disabled={!apiKey.trim()}
+            className="w-full py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+          >
+            Start Chatting
+          </button>
+          <p className="text-xs text-gray-400 text-center">
+            Get your API key from{" "}
+            
+              href="https://platform.openai.com/api-keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-emerald-600 hover:underline"
+            >
+              platform.openai.com
+            </a>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
@@ -150,13 +230,25 @@ export default function AITutorPage() {
           </h1>
           <p className="text-gray-500">Your personal medical education assistant</p>
         </div>
-        <button
-          onClick={handleNewChat}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          New Chat
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              localStorage.removeItem("openai_api_key");
+              setShowApiKeyInput(true);
+              setApiKey("");
+            }}
+            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm"
+          >
+            Change API Key
+          </button>
+          <button
+            onClick={handleNewChat}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            New Chat
+          </button>
+        </div>
       </div>
 
       {/* Chat Container */}
@@ -172,7 +264,7 @@ export default function AITutorPage() {
                 Hello{profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}! 👋
               </h2>
               <p className="text-gray-500 max-w-md mb-8">
-                I'm your AI medical tutor. Ask me anything about your courses, 
+                I'm your AI medical tutor. Ask me anything about your courses,
                 medical concepts, or request quizzes to test your knowledge.
               </p>
 
@@ -211,12 +303,6 @@ export default function AITutorPage() {
                         : "bg-gray-100 text-gray-900"
                     }`}
                   >
-                    {message.hasContext && message.role === "assistant" && (
-                      <div className="flex items-center gap-1 text-xs text-emerald-600 mb-2">
-                        <BookOpen className="h-3 w-3" />
-                        <span>Based on your course materials</span>
-                      </div>
-                    )}
                     <div className="whitespace-pre-wrap">{message.content}</div>
                     <div
                       className={`text-xs mt-2 ${
