@@ -35,53 +35,58 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const { error } = await signIn(email, password);
+      const { error: signInError } = await signIn(email, password);
 
-      if (error) {
-        if (error.message.includes("Invalid login credentials")) {
+      if (signInError) {
+        if (signInError.message.includes("Invalid login credentials")) {
           setError("Invalid email or password");
-        } else if (error.message.includes("Email not confirmed")) {
+        } else if (signInError.message.includes("Email not confirmed")) {
           setError("Please verify your email before logging in");
         } else {
-          setError(error.message);
+          setError(signInError.message);
         }
         setIsLoading(false);
         return;
       }
 
+      // Small delay to let auth state update
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       // Fetch user profile to determine redirect
       const { supabase } = await import("@/lib/supabase");
       const { data: { user } } = await supabase.auth.getUser();
       
+      console.log("Auth user:", user);
+
       if (user) {
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from("users")
           .select("role")
           .eq("id", user.id)
           .single();
 
+        console.log("Profile:", profile, "Error:", profileError);
+
         if (profile) {
-          switch (profile.role) {
-            case "student":
-              router.push("/student");
-              break;
-            case "professor":
-              router.push("/professor");
-              break;
-            case "college_admin":
-              router.push("/admin");
-              break;
-            case "super_admin":
-              router.push("/super-admin");
-              break;
-            default:
-              router.push("/student");
-          }
+          const redirectPath = 
+            profile.role === "student" ? "/student" :
+            profile.role === "professor" ? "/professor" :
+            profile.role === "college_admin" ? "/admin" :
+            profile.role === "super_admin" ? "/super-admin" :
+            "/student";
+          
+          console.log("Redirecting to:", redirectPath);
+          router.push(redirectPath);
         } else {
+          console.log("No profile found, redirecting to /student");
           router.push("/student");
         }
+      } else {
+        setError("Authentication failed. Please try again.");
+        setIsLoading(false);
       }
     } catch (err: any) {
+      console.error("Login error:", err);
       setError("An unexpected error occurred. Please try again.");
       setIsLoading(false);
     }
