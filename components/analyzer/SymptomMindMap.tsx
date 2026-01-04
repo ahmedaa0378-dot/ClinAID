@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, Check, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Sparkles } from "lucide-react";
 import { useAnalyzerAI, Symptom } from "@/hooks/useAnalyzerAI";
 
 interface SymptomMindMapProps {
@@ -12,12 +12,11 @@ interface SymptomMindMapProps {
   onSymptomDeselect: (symptomId: string) => void;
   selectedSymptoms: string[];
   onContinue: () => void;
-  useAI?: boolean; // Flag to enable/disable AI
 }
 
 // Fallback symptoms if AI fails
 const getFallbackSymptoms = (regionName: string): Symptom[] => {
-  const symptomMap: Record<string, Omit<Symptom, "position">[]> = {
+  const symptomMap: Record<string, Symptom[]> = {
     head_neck: [
       { id: "h1", name: "Headache", description: "Pain in head or scalp", isRedFlag: false },
       { id: "h2", name: "Dizziness", description: "Feeling lightheaded", isRedFlag: false },
@@ -71,7 +70,7 @@ const getFallbackSymptoms = (regionName: string): Symptom[] => {
     ],
   };
 
-  return (symptomMap[regionName] || symptomMap.head_neck) as Symptom[];
+  return symptomMap[regionName] || symptomMap.head_neck;
 };
 
 export default function SymptomMindMap({
@@ -81,41 +80,43 @@ export default function SymptomMindMap({
   onSymptomDeselect,
   selectedSymptoms,
   onContinue,
-  useAI = true,
 }: SymptomMindMapProps) {
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
   const [hoveredSymptom, setHoveredSymptom] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { fetchSymptoms, loading: aiLoading, error: aiError } = useAnalyzerAI();
+  const [isAIGenerated, setIsAIGenerated] = useState(false);
+  
+  const { fetchSymptoms } = useAnalyzerAI();
 
   useEffect(() => {
     async function loadSymptoms() {
       setIsLoading(true);
       
-      if (useAI) {
-        try {
-          const aiSymptoms = await fetchSymptoms(regionName, regionDisplayName);
-          if (aiSymptoms && aiSymptoms.length > 0) {
-            setSymptoms(aiSymptoms);
-          } else {
-            // Fallback to static symptoms
-            setSymptoms(getFallbackSymptoms(regionName));
-          }
-        } catch (err) {
-          console.error("AI symptoms failed, using fallback:", err);
+      try {
+        // Try to fetch from AI
+        const aiSymptoms = await fetchSymptoms(regionName, regionDisplayName);
+        
+        if (aiSymptoms && aiSymptoms.length > 0) {
+          setSymptoms(aiSymptoms);
+          setIsAIGenerated(true);
+        } else {
+          // Fallback to static
           setSymptoms(getFallbackSymptoms(regionName));
+          setIsAIGenerated(false);
         }
-      } else {
+      } catch (err) {
+        console.error("AI failed, using fallback:", err);
         setSymptoms(getFallbackSymptoms(regionName));
+        setIsAIGenerated(false);
       }
       
       setIsLoading(false);
     }
 
     loadSymptoms();
-  }, [regionName, regionDisplayName, useAI]);
+  }, [regionName, regionDisplayName]);
 
-  // Calculate position based on angle and distance
+  // Calculate position in circle
   const getPosition = (index: number, total: number) => {
     const angle = (index * 360) / total;
     const distance = 140 + (index % 2) * 30;
@@ -139,8 +140,9 @@ export default function SymptomMindMap({
       <div className="relative w-full h-[600px] flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-10 w-10 animate-spin text-emerald-500 mx-auto" />
-          <p className="mt-4 text-gray-600">
-            {useAI ? "AI is generating symptoms..." : "Loading symptoms..."}
+          <p className="mt-4 text-gray-600 flex items-center justify-center gap-2">
+            <Sparkles className="h-4 w-4" />
+            AI is generating symptoms...
           </p>
         </div>
       </div>
@@ -149,28 +151,25 @@ export default function SymptomMindMap({
 
   return (
     <div className="relative w-full h-[600px] flex items-center justify-center">
-      {/* Center node - Region */}
+      {/* Center node */}
       <motion.div
-        className="absolute z-10 w-32 h-32 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg cursor-default"
+        className="absolute z-10 w-32 h-32 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg"
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
         transition={{ type: "spring", stiffness: 200, damping: 20 }}
       >
         <div className="text-center text-white">
           <p className="font-bold text-sm">{regionDisplayName}</p>
-          <p className="text-xs opacity-80 mt-1">
-            {selectedSymptoms.length} selected
-          </p>
+          <p className="text-xs opacity-80 mt-1">{selectedSymptoms.length} selected</p>
         </div>
       </motion.div>
 
       {/* Connecting lines */}
       <svg className="absolute inset-0 w-full h-full pointer-events-none">
-        <g transform={`translate(${300}, ${300})`}>
+        <g transform="translate(300, 300)">
           {symptoms.map((symptom, index) => {
             const pos = getPosition(index, symptoms.length);
             const isSelected = selectedSymptoms.includes(symptom.id);
-            
             return (
               <motion.line
                 key={`line-${symptom.id}`}
@@ -196,7 +195,7 @@ export default function SymptomMindMap({
           const pos = getPosition(index, symptoms.length);
           const isSelected = selectedSymptoms.includes(symptom.id);
           const isHovered = hoveredSymptom === symptom.id;
-          
+
           return (
             <motion.div
               key={symptom.id}
@@ -207,27 +206,18 @@ export default function SymptomMindMap({
               }}
               initial={{ scale: 0, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              transition={{ 
-                type: "spring", 
-                stiffness: 200, 
-                damping: 20,
-                delay: index * 0.05 
-              }}
+              transition={{ type: "spring", stiffness: 200, damping: 20, delay: index * 0.05 }}
             >
               <motion.button
-                className={`
-                  relative px-4 py-2 rounded-full text-sm font-medium
-                  transition-all duration-200 shadow-md min-w-[100px]
-                  ${isSelected 
-                    ? symptom.isRedFlag 
-                      ? "bg-red-500 text-white shadow-red-200" 
+                className={`relative px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 shadow-md min-w-[100px] ${
+                  isSelected
+                    ? symptom.isRedFlag
+                      ? "bg-red-500 text-white shadow-red-200"
                       : "bg-emerald-500 text-white shadow-emerald-200"
                     : isHovered
-                      ? "bg-gray-100 text-gray-800 shadow-lg"
-                      : "bg-white text-gray-700 border border-gray-200"
-                  }
-                `}
+                    ? "bg-gray-100 text-gray-800 shadow-lg"
+                    : "bg-white text-gray-700 border border-gray-200"
+                }`}
                 onClick={() => handleSymptomClick(symptom)}
                 onMouseEnter={() => setHoveredSymptom(symptom.id)}
                 onMouseLeave={() => setHoveredSymptom(null)}
@@ -241,8 +231,8 @@ export default function SymptomMindMap({
                   )}
                   {symptom.name}
                 </span>
-                
-                {/* Tooltip on hover */}
+
+                {/* Tooltip */}
                 <AnimatePresence>
                   {isHovered && !isSelected && (
                     <motion.div
@@ -253,11 +243,8 @@ export default function SymptomMindMap({
                     >
                       <span className="whitespace-normal">{symptom.description}</span>
                       {symptom.isRedFlag && (
-                        <span className="text-red-400 block mt-1">
-                          ⚠️ Red Flag Symptom
-                        </span>
+                        <span className="text-red-400 block mt-1">⚠️ Red Flag</span>
                       )}
-                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -297,9 +284,10 @@ export default function SymptomMindMap({
           <AlertTriangle className="h-3 w-3 text-red-500" />
           <span className="text-gray-600">Red Flag</span>
         </div>
-        {useAI && (
-          <div className="flex items-center gap-2 text-xs mt-2 pt-2 border-t">
-            <span className="text-emerald-600">✨ AI Generated</span>
+        {isAIGenerated && (
+          <div className="flex items-center gap-2 text-xs mt-2 pt-2 border-t text-emerald-600">
+            <Sparkles className="h-3 w-3" />
+            AI Generated
           </div>
         )}
       </div>
