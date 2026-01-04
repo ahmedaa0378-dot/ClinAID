@@ -2,15 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, Check } from "lucide-react";
-
-interface Symptom {
-  id: string;
-  name: string;
-  description: string;
-  isRedFlag: boolean;
-  position: { angle: number; distance: number };
-}
+import { AlertTriangle, Check, Loader2 } from "lucide-react";
+import { useAnalyzerAI, Symptom } from "@/hooks/useAnalyzerAI";
 
 interface SymptomMindMapProps {
   regionName: string;
@@ -19,10 +12,11 @@ interface SymptomMindMapProps {
   onSymptomDeselect: (symptomId: string) => void;
   selectedSymptoms: string[];
   onContinue: () => void;
+  useAI?: boolean; // Flag to enable/disable AI
 }
 
-// Generate symptoms based on region
-const getSymptomsByRegion = (regionName: string): Symptom[] => {
+// Fallback symptoms if AI fails
+const getFallbackSymptoms = (regionName: string): Symptom[] => {
   const symptomMap: Record<string, Omit<Symptom, "position">[]> = {
     head_neck: [
       { id: "h1", name: "Headache", description: "Pain in head or scalp", isRedFlag: false },
@@ -77,16 +71,7 @@ const getSymptomsByRegion = (regionName: string): Symptom[] => {
     ],
   };
 
-  const baseSymptoms = symptomMap[regionName] || symptomMap.head_neck;
-  
-  // Assign positions in a circular pattern
-  return baseSymptoms.map((symptom, index) => ({
-    ...symptom,
-    position: {
-      angle: (index * 360) / baseSymptoms.length,
-      distance: 140 + (index % 2) * 30,
-    },
-  }));
+  return (symptomMap[regionName] || symptomMap.head_neck) as Symptom[];
 };
 
 export default function SymptomMindMap({
@@ -96,16 +81,44 @@ export default function SymptomMindMap({
   onSymptomDeselect,
   selectedSymptoms,
   onContinue,
+  useAI = true,
 }: SymptomMindMapProps) {
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
   const [hoveredSymptom, setHoveredSymptom] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const { fetchSymptoms, loading: aiLoading, error: aiError } = useAnalyzerAI();
 
   useEffect(() => {
-    setSymptoms(getSymptomsByRegion(regionName));
-  }, [regionName]);
+    async function loadSymptoms() {
+      setIsLoading(true);
+      
+      if (useAI) {
+        try {
+          const aiSymptoms = await fetchSymptoms(regionName, regionDisplayName);
+          if (aiSymptoms && aiSymptoms.length > 0) {
+            setSymptoms(aiSymptoms);
+          } else {
+            // Fallback to static symptoms
+            setSymptoms(getFallbackSymptoms(regionName));
+          }
+        } catch (err) {
+          console.error("AI symptoms failed, using fallback:", err);
+          setSymptoms(getFallbackSymptoms(regionName));
+        }
+      } else {
+        setSymptoms(getFallbackSymptoms(regionName));
+      }
+      
+      setIsLoading(false);
+    }
+
+    loadSymptoms();
+  }, [regionName, regionDisplayName, useAI]);
 
   // Calculate position based on angle and distance
-  const getPosition = (angle: number, distance: number) => {
+  const getPosition = (index: number, total: number) => {
+    const angle = (index * 360) / total;
+    const distance = 140 + (index % 2) * 30;
     const radian = (angle * Math.PI) / 180;
     return {
       x: Math.cos(radian) * distance,
@@ -120,6 +133,19 @@ export default function SymptomMindMap({
       onSymptomSelect(symptom);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="relative w-full h-[600px] flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-10 w-10 animate-spin text-emerald-500 mx-auto" />
+          <p className="mt-4 text-gray-600">
+            {useAI ? "AI is generating symptoms..." : "Loading symptoms..."}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-[600px] flex items-center justify-center">
@@ -142,7 +168,7 @@ export default function SymptomMindMap({
       <svg className="absolute inset-0 w-full h-full pointer-events-none">
         <g transform={`translate(${300}, ${300})`}>
           {symptoms.map((symptom, index) => {
-            const pos = getPosition(symptom.position.angle, symptom.position.distance);
+            const pos = getPosition(index, symptoms.length);
             const isSelected = selectedSymptoms.includes(symptom.id);
             
             return (
@@ -167,7 +193,7 @@ export default function SymptomMindMap({
       {/* Symptom nodes */}
       <AnimatePresence>
         {symptoms.map((symptom, index) => {
-          const pos = getPosition(symptom.position.angle, symptom.position.distance);
+          const pos = getPosition(index, symptoms.length);
           const isSelected = selectedSymptoms.includes(symptom.id);
           const isHovered = hoveredSymptom === symptom.id;
           
@@ -192,7 +218,7 @@ export default function SymptomMindMap({
               <motion.button
                 className={`
                   relative px-4 py-2 rounded-full text-sm font-medium
-                  transition-all duration-200 shadow-md
+                  transition-all duration-200 shadow-md min-w-[100px]
                   ${isSelected 
                     ? symptom.isRedFlag 
                       ? "bg-red-500 text-white shadow-red-200" 
@@ -208,7 +234,7 @@ export default function SymptomMindMap({
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
-                <span className="flex items-center gap-1">
+                <span className="flex items-center justify-center gap-1">
                   {isSelected && <Check className="h-3 w-3" />}
                   {symptom.isRedFlag && !isSelected && (
                     <AlertTriangle className="h-3 w-3 text-red-500" />
@@ -220,12 +246,12 @@ export default function SymptomMindMap({
                 <AnimatePresence>
                   {isHovered && !isSelected && (
                     <motion.div
-                      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap z-20"
+                      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap z-20 max-w-[200px] text-center"
                       initial={{ opacity: 0, y: 5 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 5 }}
                     >
-                      {symptom.description}
+                      <span className="whitespace-normal">{symptom.description}</span>
                       {symptom.isRedFlag && (
                         <span className="text-red-400 block mt-1">
                           ⚠️ Red Flag Symptom
@@ -271,6 +297,11 @@ export default function SymptomMindMap({
           <AlertTriangle className="h-3 w-3 text-red-500" />
           <span className="text-gray-600">Red Flag</span>
         </div>
+        {useAI && (
+          <div className="flex items-center gap-2 text-xs mt-2 pt-2 border-t">
+            <span className="text-emerald-600">✨ AI Generated</span>
+          </div>
+        )}
       </div>
     </div>
   );
