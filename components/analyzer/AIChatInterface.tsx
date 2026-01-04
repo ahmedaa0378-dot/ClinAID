@@ -3,17 +3,15 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  Send, 
   Bot, 
   User, 
   Loader2, 
   CheckCircle2,
   AlertTriangle,
-  FileText,
-  Stethoscope,
+  Sparkles,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useAnalyzerAI, Question, DiagnosisResponse } from "@/hooks/useAnalyzerAI";
 
 interface Message {
   id: string;
@@ -22,7 +20,6 @@ interface Message {
   options?: ChatOption[];
   selectedOption?: string;
   timestamp: Date;
-  isTyping?: boolean;
 }
 
 interface ChatOption {
@@ -37,94 +34,39 @@ interface Symptom {
   isRedFlag: boolean;
 }
 
-interface DiagnosisResult {
-  name: string;
-  probability: "high" | "moderate" | "low";
-  confidence: number;
-  description: string;
-  supportingFindings: string[];
-  redFlags?: string[];
-}
-
 interface AIChatInterfaceProps {
   regionName: string;
   symptoms: Symptom[];
-  onComplete: (diagnosis: DiagnosisResult[]) => void;
+  onComplete: (diagnosis: DiagnosisResponse) => void;
+  studentLevel?: string;
 }
-
-// Sample questions flow
-const questionFlow = [
-  {
-    id: "q1",
-    question: "How long have you been experiencing these symptoms?",
-    options: [
-      { id: "q1_a", text: "Less than 24 hours", subtext: "Just started" },
-      { id: "q1_b", text: "1-7 days", subtext: "About a week" },
-      { id: "q1_c", text: "1-4 weeks", subtext: "A few weeks" },
-      { id: "q1_d", text: "More than a month", subtext: "Ongoing" },
-    ],
-  },
-  {
-    id: "q2",
-    question: "How would you rate the severity?",
-    options: [
-      { id: "q2_a", text: "Mild", subtext: "Noticeable but not limiting" },
-      { id: "q2_b", text: "Moderate", subtext: "Affecting daily activities" },
-      { id: "q2_c", text: "Severe", subtext: "Significantly limiting" },
-      { id: "q2_d", text: "Very Severe", subtext: "Unable to function normally" },
-    ],
-  },
-  {
-    id: "q3",
-    question: "Is the symptom constant or intermittent?",
-    options: [
-      { id: "q3_a", text: "Constant", subtext: "Always present" },
-      { id: "q3_b", text: "Intermittent", subtext: "Comes and goes" },
-      { id: "q3_c", text: "Episodes", subtext: "Distinct attacks" },
-      { id: "q3_d", text: "Progressive", subtext: "Getting worse" },
-    ],
-  },
-  {
-    id: "q4",
-    question: "Are there any factors that make it better or worse?",
-    options: [
-      { id: "q4_a", text: "Movement/activity", subtext: "Physical exertion" },
-      { id: "q4_b", text: "Rest/lying down", subtext: "When relaxing" },
-      { id: "q4_c", text: "Eating/drinking", subtext: "Related to meals" },
-      { id: "q4_d", text: "No clear pattern", subtext: "Unpredictable" },
-    ],
-  },
-  {
-    id: "q5",
-    question: "Do you have any other associated symptoms?",
-    options: [
-      { id: "q5_a", text: "Fever or chills", subtext: "Temperature changes" },
-      { id: "q5_b", text: "Fatigue", subtext: "Feeling tired" },
-      { id: "q5_c", text: "Nausea", subtext: "Feeling sick" },
-      { id: "q5_d", text: "None of the above", subtext: "Just the main symptoms" },
-    ],
-  },
-];
 
 export default function AIChatInterface({
   regionName,
   symptoms,
   onComplete,
+  studentLevel = "R1",
 }: AIChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isTyping, setIsTyping] = useState(false);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [showDiagnosis, setShowDiagnosis] = useState(false);
+  const [initComplete, setInitComplete] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const { fetchQuestions, fetchDiagnosis, loading, error } = useAnalyzerAI();
 
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Initialize chat
+  // Initialize chat and fetch AI questions
   useEffect(() => {
+    if (initComplete) return;
+    
     const initChat = async () => {
       // Welcome message
       await addAIMessage(
@@ -141,13 +83,34 @@ export default function AIChatInterface({
         1000
       );
       
-      // Start questions
-      await addAIMessage(
-        "Let me ask you a few questions to better understand your condition.",
-        800
-      );
+      // Fetch AI questions
+      await addAIMessage("Let me generate some clinical questions based on your symptoms...", 500);
+      setIsTyping(true);
       
-      askNextQuestion();
+      try {
+        const aiQuestions = await fetchQuestions(regionName, symptoms, studentLevel);
+        
+        if (aiQuestions && aiQuestions.length > 0) {
+          setQuestions(aiQuestions);
+          setIsTyping(false);
+          await addAIMessage("✨ I've prepared some questions to help narrow down the diagnosis.", 300);
+          askQuestion(aiQuestions[0]);
+        } else {
+          // Fallback to static questions
+          const fallbackQuestions = getFallbackQuestions();
+          setQuestions(fallbackQuestions);
+          setIsTyping(false);
+          askQuestion(fallbackQuestions[0]);
+        }
+      } catch (err) {
+        console.error("Error fetching questions:", err);
+        const fallbackQuestions = getFallbackQuestions();
+        setQuestions(fallbackQuestions);
+        setIsTyping(false);
+        askQuestion(fallbackQuestions[0]);
+      }
+      
+      setInitComplete(true);
     };
 
     initChat();
@@ -173,25 +136,21 @@ export default function AIChatInterface({
     });
   };
 
-  const askNextQuestion = async () => {
-    if (currentQuestionIndex >= questionFlow.length) {
-      // All questions answered - generate diagnosis
-      await generateDiagnosis();
-      return;
-    }
-
-    const question = questionFlow[currentQuestionIndex];
-    
+  const askQuestion = async (question: Question) => {
     setIsTyping(true);
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 600));
     
     setMessages((prev) => [
       ...prev,
       {
-        id: `msg-${Date.now()}`,
+        id: question.id,
         type: "ai",
         content: question.question,
-        options: question.options,
+        options: question.options.map(opt => ({
+          id: opt.id,
+          text: opt.text,
+          subtext: opt.clinicalSignificance,
+        })),
         timestamp: new Date(),
       },
     ]);
@@ -203,24 +162,23 @@ export default function AIChatInterface({
     setMessages((prev) => [
       ...prev,
       {
-        id: `msg-${Date.now()}`,
+        id: `user-${Date.now()}`,
         type: "user",
         content: option.text,
         timestamp: new Date(),
       },
     ]);
 
-    // Update last AI message to mark selected option
+    // Mark question as answered
     setMessages((prev) =>
       prev.map((msg) =>
-        msg.options?.some((o) => o.id === option.id)
-          ? { ...msg, selectedOption: option.id }
-          : msg
+        msg.id === questionId ? { ...msg, selectedOption: option.id } : msg
       )
     );
 
     // Save answer
-    setAnswers((prev) => ({ ...prev, [questionId]: option.id }));
+    const newAnswers = { ...answers, [questionId]: option.text };
+    setAnswers(newAnswers);
 
     // Brief acknowledgment
     const acknowledgments = [
@@ -228,72 +186,153 @@ export default function AIChatInterface({
       "I understand.",
       "Thank you for that information.",
       "Noted.",
-      "Okay, that helps.",
+      "That helps narrow things down.",
     ];
     const ack = acknowledgments[Math.floor(Math.random() * acknowledgments.length)];
-    
     await addAIMessage(ack, 400);
 
-    // Move to next question
-    setCurrentQuestionIndex((prev) => prev + 1);
+    // Next question or generate diagnosis
+    const nextIndex = currentQuestionIndex + 1;
     
-    setTimeout(() => {
-      askNextQuestion();
-    }, 500);
+    if (nextIndex < questions.length) {
+      setCurrentQuestionIndex(nextIndex);
+      setTimeout(() => {
+        askQuestion(questions[nextIndex]);
+      }, 500);
+    } else {
+      // All questions answered - generate diagnosis
+      await generateDiagnosis(newAnswers);
+    }
   };
 
-  const generateDiagnosis = async () => {
+  const generateDiagnosis = async (finalAnswers: Record<string, string>) => {
     await addAIMessage(
-      "Thank you for answering all my questions. Let me analyze this information...",
+      "Thank you for answering all my questions. Let me analyze this information with AI...",
       500
     );
     
     setIsTyping(true);
-    await new Promise((r) => setTimeout(r, 2000));
-    setIsTyping(false);
-
-    // Sample diagnoses based on region
-    const diagnoses: DiagnosisResult[] = [
-      {
-        name: "Tension-Type Headache",
-        probability: "high",
-        confidence: 0.85,
-        description: "Most common primary headache disorder characterized by bilateral pressing pain.",
-        supportingFindings: ["Bilateral location", "Pressing quality", "Mild to moderate intensity"],
-        redFlags: [],
-      },
-      {
-        name: "Migraine",
-        probability: "moderate",
-        confidence: 0.65,
-        description: "Recurrent headache disorder with attacks lasting 4-72 hours.",
-        supportingFindings: ["Pulsating quality possible", "Associated symptoms"],
-        redFlags: ["Sudden onset", "Worst headache of life"],
-      },
-      {
-        name: "Cervicogenic Headache",
-        probability: "low",
-        confidence: 0.35,
-        description: "Secondary headache caused by cervical spine disorder.",
-        supportingFindings: ["Neck involvement"],
-        redFlags: [],
-      },
-    ];
-
-    // Show diagnosis message
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `msg-${Date.now()}`,
-        type: "system",
-        content: "DIAGNOSIS_READY",
-        timestamp: new Date(),
-      },
-    ]);
-
-    setShowDiagnosis(true);
-    onComplete(diagnoses);
+    
+    try {
+      const diagnosisResult = await fetchDiagnosis(
+        regionName,
+        symptoms,
+        finalAnswers,
+        studentLevel
+      );
+      
+      setIsTyping(false);
+      
+      if (diagnosisResult && diagnosisResult.diagnoses.length > 0) {
+        // Show diagnosis ready message
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `system-${Date.now()}`,
+            type: "system",
+            content: "DIAGNOSIS_READY",
+            timestamp: new Date(),
+          },
+        ]);
+        
+        // Add clinical pearl if available
+        if (diagnosisResult.clinicalPearl) {
+          await addAIMessage(`💡 **Clinical Pearl:** ${diagnosisResult.clinicalPearl}`, 500);
+        }
+        
+        setShowDiagnosis(true);
+        onComplete(diagnosisResult);
+      } else {
+        await addAIMessage("I was unable to generate a diagnosis. Please try again.", 500);
+      }
+    } catch (err) {
+      console.error("Error generating diagnosis:", err);
+      setIsTyping(false);
+      await addAIMessage("There was an error generating the diagnosis. Using fallback analysis...", 500);
+      
+      // Fallback diagnosis
+      const fallbackDiagnosis: DiagnosisResponse = {
+        diagnoses: [
+          {
+            name: "Further Evaluation Needed",
+            icdCode: "R69",
+            probability: "moderate",
+            confidence: 0.5,
+            description: "Based on the symptoms provided, additional clinical evaluation is recommended.",
+            supportingFindings: symptoms.map(s => s.name),
+            contradictingFindings: [],
+            redFlags: symptoms.filter(s => s.isRedFlag).map(s => s.name),
+            nextSteps: ["Physical examination", "Laboratory tests", "Imaging if indicated"],
+            differentialConsiderations: "Multiple diagnoses possible based on presentation.",
+          },
+        ],
+        clinicalPearl: "Always consider the complete clinical picture when making diagnostic decisions.",
+        urgencyLevel: symptoms.some(s => s.isRedFlag) ? "urgent" : "routine",
+        recommendedWorkup: ["Complete history", "Physical exam", "Basic labs"],
+      };
+      
+      onComplete(fallbackDiagnosis);
+    }
   };
+
+  // Fallback questions if AI fails
+  const getFallbackQuestions = (): Question[] => [
+    {
+      id: "q1",
+      question: "How long have you been experiencing these symptoms?",
+      clinicalRationale: "Duration helps differentiate acute from chronic conditions.",
+      options: [
+        { id: "q1_a", text: "Less than 24 hours", clinicalSignificance: "Acute onset" },
+        { id: "q1_b", text: "1-7 days", clinicalSignificance: "Subacute" },
+        { id: "q1_c", text: "1-4 weeks", clinicalSignificance: "Prolonged" },
+        { id: "q1_d", text: "More than a month", clinicalSignificance: "Chronic" },
+      ],
+    },
+    {
+      id: "q2",
+      question: "How would you rate the severity?",
+      clinicalRationale: "Severity guides urgency of evaluation.",
+      options: [
+        { id: "q2_a", text: "Mild", clinicalSignificance: "Not limiting activities" },
+        { id: "q2_b", text: "Moderate", clinicalSignificance: "Affecting daily activities" },
+        { id: "q2_c", text: "Severe", clinicalSignificance: "Significantly limiting" },
+        { id: "q2_d", text: "Very Severe", clinicalSignificance: "Unable to function" },
+      ],
+    },
+    {
+      id: "q3",
+      question: "Is the symptom constant or intermittent?",
+      clinicalRationale: "Pattern indicates underlying pathophysiology.",
+      options: [
+        { id: "q3_a", text: "Constant", clinicalSignificance: "Always present" },
+        { id: "q3_b", text: "Intermittent", clinicalSignificance: "Comes and goes" },
+        { id: "q3_c", text: "Episodes", clinicalSignificance: "Distinct attacks" },
+        { id: "q3_d", text: "Progressive", clinicalSignificance: "Getting worse" },
+      ],
+    },
+    {
+      id: "q4",
+      question: "What makes it better or worse?",
+      clinicalRationale: "Aggravating factors provide diagnostic clues.",
+      options: [
+        { id: "q4_a", text: "Movement/activity", clinicalSignificance: "Musculoskeletal" },
+        { id: "q4_b", text: "Rest/lying down", clinicalSignificance: "Positional component" },
+        { id: "q4_c", text: "Eating/drinking", clinicalSignificance: "GI involvement" },
+        { id: "q4_d", text: "No clear pattern", clinicalSignificance: "Unpredictable" },
+      ],
+    },
+    {
+      id: "q5",
+      question: "Any associated symptoms?",
+      clinicalRationale: "Associated symptoms help narrow differential.",
+      options: [
+        { id: "q5_a", text: "Fever or chills", clinicalSignificance: "Infection/inflammation" },
+        { id: "q5_b", text: "Fatigue", clinicalSignificance: "Systemic involvement" },
+        { id: "q5_c", text: "Nausea", clinicalSignificance: "GI or CNS involvement" },
+        { id: "q5_d", text: "None", clinicalSignificance: "Isolated symptom" },
+      ],
+    },
+  ];
 
   return (
     <div className="flex flex-col h-[600px] bg-white rounded-2xl shadow-lg overflow-hidden">
@@ -303,9 +342,12 @@ export default function AIChatInterface({
           <Bot className="h-6 w-6 text-white" />
         </div>
         <div>
-          <h3 className="font-semibold text-white">AI Clinical Assistant</h3>
+          <h3 className="font-semibold text-white flex items-center gap-2">
+            AI Clinical Assistant
+            <Sparkles className="h-4 w-4" />
+          </h3>
           <p className="text-emerald-100 text-sm">
-            {isTyping ? "Typing..." : "Online"}
+            {isTyping ? "Thinking..." : "Powered by OpenAI"}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -329,7 +371,7 @@ export default function AIChatInterface({
               {message.type === "system" && message.content === "DIAGNOSIS_READY" ? (
                 <div className="w-full p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
                   <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
-                  <p className="font-medium text-emerald-800">Analysis Complete!</p>
+                  <p className="font-medium text-emerald-800">AI Analysis Complete!</p>
                   <p className="text-sm text-emerald-600">
                     Differential diagnoses have been generated based on your responses.
                   </p>
@@ -342,7 +384,6 @@ export default function AIChatInterface({
                       : "bg-white border border-gray-200 rounded-2xl rounded-tl-sm"
                   } px-4 py-3 shadow-sm`}
                 >
-                  {/* Avatar */}
                   <div className="flex items-start gap-2">
                     {message.type === "ai" && (
                       <Bot className="h-5 w-5 text-emerald-500 flex-shrink-0 mt-0.5" />
@@ -382,7 +423,6 @@ export default function AIChatInterface({
                         </div>
                       )}
                       
-                      {/* Selected option indicator */}
                       {message.selectedOption && (
                         <div className="mt-2 text-xs text-gray-400 flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3" />
@@ -428,12 +468,14 @@ export default function AIChatInterface({
         <div className="flex items-center justify-between text-xs text-gray-500">
           <span>
             {showDiagnosis 
-              ? "Analysis complete" 
-              : `Question ${Math.min(currentQuestionIndex + 1, questionFlow.length)} of ${questionFlow.length}`
+              ? "✨ AI Analysis complete" 
+              : questions.length > 0 
+                ? `Question ${Math.min(currentQuestionIndex + 1, questions.length)} of ${questions.length}`
+                : "Initializing..."
             }
           </span>
           <div className="flex gap-1">
-            {questionFlow.map((_, i) => (
+            {questions.map((_, i) => (
               <div
                 key={i}
                 className={`w-2 h-2 rounded-full transition-colors ${
