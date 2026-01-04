@@ -3,21 +3,26 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import HumanBodySVG from "@/components/analyzer/HumanBodySVG";
-import SymptomMindMap from "@/components/analyzer/SymptomMindMap";
-import AIChatInterface from "@/components/analyzer/AIChatInterface";
+import SymptomMindMap from "@/components/analyzer/SymptomMindMapAI";
+import AIChatInterface from "@/components/analyzer/AIChatInterfaceAI";
+import { useAnalyzerSession } from "@/hooks/useAnalyzerSession";
+import { DiagnosisResponse } from "@/hooks/useAnalyzerAI";
 import {
   Stethoscope,
   ArrowLeft,
-  ArrowRight,
   RotateCcw,
   FileText,
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
-  Info,
+  Sparkles,
+  Clock,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,26 +44,36 @@ interface Symptom {
   isRedFlag: boolean;
 }
 
-interface DiagnosisResult {
-  name: string;
-  probability: "high" | "moderate" | "low";
-  confidence: number;
-  description: string;
-  supportingFindings: string[];
-  redFlags?: string[];
-}
-
 export default function SymptomAnalyzerPage() {
   const router = useRouter();
   const { user, profile } = useAuth();
   
+  // State
   const [currentStep, setCurrentStep] = useState<Step>("body");
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [selectedRegionName, setSelectedRegionName] = useState<string>("");
   const [selectedSymptoms, setSelectedSymptoms] = useState<Symptom[]>([]);
-  const [diagnoses, setDiagnoses] = useState<DiagnosisResult[]>([]);
+  const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResponse | null>(null);
   const [selectedDiagnosis, setSelectedDiagnosis] = useState<string | null>(null);
   const [showResetDialog, setShowResetDialog] = useState(false);
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
+
+  // Database hooks
+  const {
+    sessionId,
+    createSession,
+    addSymptoms,
+    saveDiagnoses,
+    completeSession,
+    loading: dbLoading,
+  } = useAnalyzerSession();
+
+  // Create session when starting
+  useEffect(() => {
+    if (currentStep === "body" && !sessionStartTime) {
+      setSessionStartTime(new Date());
+    }
+  }, [currentStep]);
 
   // Handle body region selection
   const handleRegionClick = (regionId: string, regionName: string) => {
@@ -75,9 +90,50 @@ export default function SymptomAnalyzerPage() {
     setSelectedSymptoms((prev) => prev.filter((s) => s.id !== symptomId));
   };
 
+  // Handle moving to symptoms step
+  const goToSymptoms = async () => {
+    if (!selectedRegion || !user?.id) return;
+    
+    // Create database session
+    const newSessionId = await createSession(user.id, selectedRegion, selectedRegionName);
+    
+    if (newSessionId) {
+      setCurrentStep("symptoms");
+    } else {
+      // Continue anyway even if DB fails
+      setCurrentStep("symptoms");
+    }
+  };
+
+  // Handle moving to chat step
+  const goToChat = async () => {
+    if (selectedSymptoms.length === 0) return;
+    
+    // Save symptoms to database
+    if (sessionId && selectedRegion) {
+      await addSymptoms(
+        sessionId,
+        selectedSymptoms.map(s => ({
+          id: s.id,
+          name: s.name,
+          isRedFlag: s.isRedFlag,
+        })),
+        selectedRegion
+      );
+    }
+    
+    setCurrentStep("chat");
+  };
+
   // Handle chat completion
-  const handleChatComplete = (results: DiagnosisResult[]) => {
-    setDiagnoses(results);
+  const handleChatComplete = async (result: DiagnosisResponse) => {
+    setDiagnosisResult(result);
+    
+    // Save diagnoses to database
+    if (sessionId && result.diagnoses) {
+      await saveDiagnoses(sessionId, result.diagnoses);
+    }
+    
     setCurrentStep("results");
   };
 
@@ -87,18 +143,10 @@ export default function SymptomAnalyzerPage() {
     setSelectedRegion(null);
     setSelectedRegionName("");
     setSelectedSymptoms([]);
-    setDiagnoses([]);
+    setDiagnosisResult(null);
     setSelectedDiagnosis(null);
+    setSessionStartTime(new Date());
     setShowResetDialog(false);
-  };
-
-  // Navigate to next step
-  const goToNextStep = () => {
-    if (currentStep === "body" && selectedRegion) {
-      setCurrentStep("symptoms");
-    } else if (currentStep === "symptoms" && selectedSymptoms.length > 0) {
-      setCurrentStep("chat");
-    }
   };
 
   // Navigate to previous step
@@ -126,6 +174,32 @@ export default function SymptomAnalyzerPage() {
     }
   };
 
+  // Get probability icon
+  const getProbabilityIcon = (probability: string) => {
+    switch (probability) {
+      case "high":
+        return <TrendingUp className="h-4 w-4" />;
+      case "moderate":
+        return <Minus className="h-4 w-4" />;
+      case "low":
+        return <TrendingDown className="h-4 w-4" />;
+      default:
+        return null;
+    }
+  };
+
+  // Get urgency badge
+  const getUrgencyBadge = (urgency?: string) => {
+    switch (urgency) {
+      case "emergent":
+        return <Badge className="bg-red-500 text-white">🚨 Emergent</Badge>;
+      case "urgent":
+        return <Badge className="bg-orange-500 text-white">⚠️ Urgent</Badge>;
+      default:
+        return <Badge className="bg-green-500 text-white">✓ Routine</Badge>;
+    }
+  };
+
   // Step indicators
   const steps = [
     { id: "body", label: "Select Region", icon: "🫀" },
@@ -135,6 +209,15 @@ export default function SymptomAnalyzerPage() {
   ];
 
   const currentStepIndex = steps.findIndex((s) => s.id === currentStep);
+
+  // Calculate session duration
+  const getSessionDuration = () => {
+    if (!sessionStartTime) return "0:00";
+    const diff = Math.floor((new Date().getTime() - sessionStartTime.getTime()) / 1000);
+    const mins = Math.floor(diff / 60);
+    const secs = diff % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
 
   return (
     <div className="min-h-screen">
@@ -147,20 +230,32 @@ export default function SymptomAnalyzerPage() {
                 <Stethoscope className="h-7 w-7" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold">Symptom Analyzer</h1>
+                <h1 className="text-2xl font-bold flex items-center gap-2">
+                  Symptom Analyzer
+                  <Sparkles className="h-5 w-5" />
+                </h1>
                 <p className="text-emerald-100">
-                  Interactive AI-powered clinical diagnosis training
+                  AI-powered clinical diagnosis training
                 </p>
               </div>
             </div>
-            <Button
-              variant="ghost"
-              className="text-white hover:bg-white/20"
-              onClick={() => setShowResetDialog(true)}
-            >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Start Over
-            </Button>
+            <div className="flex items-center gap-4">
+              <div className="text-right hidden md:block">
+                <p className="text-emerald-100 text-sm">Session Duration</p>
+                <p className="font-mono font-bold flex items-center gap-1">
+                  <Clock className="h-4 w-4" />
+                  {getSessionDuration()}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                className="text-white hover:bg-white/20"
+                onClick={() => setShowResetDialog(true)}
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Start Over
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -215,7 +310,6 @@ export default function SymptomAnalyzerPage() {
             exit={{ opacity: 0, x: 20 }}
             className="grid grid-cols-1 lg:grid-cols-2 gap-8"
           >
-            {/* Human Body SVG */}
             <Card className="overflow-hidden">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -231,61 +325,34 @@ export default function SymptomAnalyzerPage() {
               </CardContent>
             </Card>
 
-            {/* Info Panel */}
             <div className="space-y-4">
               <Card>
                 <CardContent className="pt-6">
-                  <h3 className="font-semibold text-lg mb-4">How it works</h3>
+                  <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-emerald-500" />
+                    How it works
+                  </h3>
                   <div className="space-y-3">
-                    <div className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
-                        1
+                    {[
+                      { num: 1, title: "Select Body Region", desc: "Click on the affected area" },
+                      { num: 2, title: "AI Generates Symptoms", desc: "OpenAI creates relevant symptoms" },
+                      { num: 3, title: "Answer Questions", desc: "Chat with AI clinical assistant" },
+                      { num: 4, title: "Get AI Diagnosis", desc: "Receive differential diagnoses" },
+                    ].map((item) => (
+                      <div key={item.num} className="flex gap-3">
+                        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
+                          {item.num}
+                        </div>
+                        <div>
+                          <p className="font-medium">{item.title}</p>
+                          <p className="text-sm text-gray-500">{item.desc}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium">Select Body Region</p>
-                        <p className="text-sm text-gray-500">
-                          Click on the area where symptoms are present
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
-                        2
-                      </div>
-                      <div>
-                        <p className="font-medium">Pick Symptoms</p>
-                        <p className="text-sm text-gray-500">
-                          Select from the symptom mind map
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
-                        3
-                      </div>
-                      <div>
-                        <p className="font-medium">Answer Questions</p>
-                        <p className="text-sm text-gray-500">
-                          Chat with AI to refine diagnosis
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
-                        4
-                      </div>
-                      <div>
-                        <p className="font-medium">Get Differential Diagnosis</p>
-                        <p className="text-sm text-gray-500">
-                          Review AI-generated diagnoses
-                        </p>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Selected Region Info */}
               {selectedRegion && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -301,8 +368,9 @@ export default function SymptomAnalyzerPage() {
                           </p>
                         </div>
                         <Button
-                          onClick={goToNextStep}
+                          onClick={goToSymptoms}
                           className="bg-emerald-600 hover:bg-emerald-700"
+                          disabled={dbLoading}
                         >
                           Continue
                           <ChevronRight className="h-4 w-4 ml-1" />
@@ -316,7 +384,7 @@ export default function SymptomAnalyzerPage() {
           </motion.div>
         )}
 
-        {/* Step 2: Symptom Selection (Mind Map) */}
+        {/* Step 2: Symptom Selection */}
         {currentStep === "symptoms" && (
           <motion.div
             key="symptoms"
@@ -330,6 +398,10 @@ export default function SymptomAnalyzerPage() {
                   <CardTitle className="flex items-center gap-2">
                     <span className="text-2xl">🔍</span>
                     Select Symptoms - {selectedRegionName}
+                    <Badge className="ml-2 bg-emerald-100 text-emerald-700">
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      AI Generated
+                    </Badge>
                   </CardTitle>
                   <p className="text-sm text-gray-500 mt-1">
                     Click on symptoms to select them
@@ -347,7 +419,8 @@ export default function SymptomAnalyzerPage() {
                   onSymptomSelect={handleSymptomSelect}
                   onSymptomDeselect={handleSymptomDeselect}
                   selectedSymptoms={selectedSymptoms.map((s) => s.id)}
-                  onContinue={() => setCurrentStep("chat")}
+                  onContinue={goToChat}
+                  useAI={true}
                 />
               </CardContent>
             </Card>
@@ -372,6 +445,10 @@ export default function SymptomAnalyzerPage() {
                 <Badge variant="outline">
                   {selectedSymptoms.length} symptoms selected
                 </Badge>
+                <Badge className="bg-emerald-100 text-emerald-700">
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  OpenAI Powered
+                </Badge>
               </div>
             </div>
             
@@ -383,12 +460,13 @@ export default function SymptomAnalyzerPage() {
                 isRedFlag: s.isRedFlag,
               }))}
               onComplete={handleChatComplete}
+              studentLevel={profile?.student_type || "R1"}
             />
           </motion.div>
         )}
 
         {/* Step 4: Results */}
-        {currentStep === "results" && (
+        {currentStep === "results" && diagnosisResult && (
           <motion.div
             key="results"
             initial={{ opacity: 0, x: -20 }}
@@ -398,16 +476,33 @@ export default function SymptomAnalyzerPage() {
           >
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <span className="text-2xl">📋</span>
-                  Differential Diagnosis Results
-                </CardTitle>
-                <p className="text-sm text-gray-500">
-                  Based on your symptoms and responses, here are the possible diagnoses
-                </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <span className="text-2xl">📋</span>
+                      AI Differential Diagnosis
+                      <Sparkles className="h-5 w-5 text-emerald-500" />
+                    </CardTitle>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Based on symptoms and AI analysis
+                    </p>
+                  </div>
+                  {getUrgencyBadge(diagnosisResult.urgencyLevel)}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {diagnoses.map((diagnosis, index) => (
+                {/* Clinical Pearl */}
+                {diagnosisResult.clinicalPearl && (
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                    <p className="text-sm text-blue-800 flex items-start gap-2">
+                      <span className="text-lg">💡</span>
+                      <span><strong>Clinical Pearl:</strong> {diagnosisResult.clinicalPearl}</span>
+                    </p>
+                  </div>
+                )}
+
+                {/* Diagnoses */}
+                {diagnosisResult.diagnoses.map((diagnosis, index) => (
                   <motion.div
                     key={diagnosis.name}
                     initial={{ opacity: 0, y: 10 }}
@@ -422,28 +517,61 @@ export default function SymptomAnalyzerPage() {
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <h3 className="font-semibold text-lg">{diagnosis.name}</h3>
                           <Badge className={getProbabilityColor(diagnosis.probability)}>
-                            {diagnosis.probability} probability
+                            {getProbabilityIcon(diagnosis.probability)}
+                            <span className="ml-1 capitalize">{diagnosis.probability}</span>
                           </Badge>
+                          {diagnosis.icdCode && (
+                            <Badge variant="outline">ICD: {diagnosis.icdCode}</Badge>
+                          )}
                         </div>
                         <p className="text-gray-600 text-sm mb-3">
                           {diagnosis.description}
                         </p>
-                        <div className="flex flex-wrap gap-1">
-                          {diagnosis.supportingFindings.map((finding) => (
-                            <Badge key={finding} variant="secondary" className="text-xs">
-                              {finding}
-                            </Badge>
-                          ))}
+                        
+                        {/* Supporting Findings */}
+                        <div className="mb-2">
+                          <p className="text-xs font-medium text-gray-500 mb-1">Supporting Findings:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {diagnosis.supportingFindings.map((finding) => (
+                              <Badge key={finding} variant="secondary" className="text-xs bg-green-100 text-green-700">
+                                ✓ {finding}
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
-                        {diagnosis.redFlags && diagnosis.redFlags.length > 0 && (
+
+                        {/* Contradicting Findings */}
+                        {diagnosis.contradictingFindings?.length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-xs font-medium text-gray-500 mb-1">Against:</p>
+                            <div className="flex flex-wrap gap-1">
+                              {diagnosis.contradictingFindings.map((finding) => (
+                                <Badge key={finding} variant="secondary" className="text-xs bg-yellow-100 text-yellow-700">
+                                  ✗ {finding}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Red Flags */}
+                        {diagnosis.redFlags?.length > 0 && (
                           <div className="mt-3 p-2 bg-red-50 rounded-lg">
                             <p className="text-xs text-red-700 flex items-center gap-1">
                               <AlertTriangle className="h-3 w-3" />
-                              Red flags: {diagnosis.redFlags.join(", ")}
+                              <strong>Red flags:</strong> {diagnosis.redFlags.join(", ")}
                             </p>
+                          </div>
+                        )}
+
+                        {/* Next Steps */}
+                        {diagnosis.nextSteps?.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-xs font-medium text-gray-500">Recommended Next Steps:</p>
+                            <p className="text-xs text-gray-600">{diagnosis.nextSteps.join(" → ")}</p>
                           </div>
                         )}
                       </div>
@@ -457,6 +585,18 @@ export default function SymptomAnalyzerPage() {
                   </motion.div>
                 ))}
 
+                {/* Recommended Workup */}
+                {diagnosisResult.recommendedWorkup?.length > 0 && (
+                  <div className="p-4 bg-gray-50 rounded-xl">
+                    <p className="text-sm font-medium text-gray-700 mb-2">📋 Recommended Workup:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {diagnosisResult.recommendedWorkup.map((item) => (
+                        <Badge key={item} variant="outline">{item}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Action Buttons */}
                 <div className="flex items-center justify-between pt-4 border-t">
                   <Button variant="outline" onClick={() => setShowResetDialog(true)}>
@@ -466,9 +606,11 @@ export default function SymptomAnalyzerPage() {
                   <Button
                     disabled={!selectedDiagnosis}
                     className="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600"
-                    onClick={() => {
-                      // Navigate to report generation
-                      router.push(`/student/analyzer/report?diagnosis=${encodeURIComponent(selectedDiagnosis || "")}`);
+                    onClick={async () => {
+                      if (sessionId) {
+                        await completeSession(sessionId);
+                      }
+                      router.push(`/student/analyzer/report?diagnosis=${encodeURIComponent(selectedDiagnosis || "")}&sessionId=${sessionId}`);
                     }}
                   >
                     <FileText className="h-4 w-4 mr-2" />
@@ -481,14 +623,13 @@ export default function SymptomAnalyzerPage() {
         )}
       </AnimatePresence>
 
-      {/* Reset Confirmation Dialog */}
+      {/* Reset Dialog */}
       <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Start Over?</DialogTitle>
             <DialogDescription>
               This will clear all your selections and start a new analysis session.
-              Are you sure you want to continue?
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-3 mt-4">
