@@ -5,10 +5,8 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/context/AuthContext";
 import HumanBodySVG from "@/components/analyzer/HumanBodySVG";
-import SymptomMindMap from "@/components/analyzer/SymptomMindMapAI";
-import AIChatInterface from "@/components/analyzer/AIChatInterfaceAI";
-import { useAnalyzerSession } from "@/hooks/useAnalyzerSession";
-import { DiagnosisResponse } from "@/hooks/useAnalyzerAI";
+import SymptomMindMap from "@/components/analyzer/SymptomMindMap";
+import AIChatInterface from "@/components/analyzer/AIChatInterface";
 import {
   Stethoscope,
   ArrowLeft,
