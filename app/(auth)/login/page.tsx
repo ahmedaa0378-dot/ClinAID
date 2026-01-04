@@ -79,7 +79,7 @@ export default function LoginPage() {
 window.location.href = redirectPath;
         } else {
           console.log("No profile found, redirecting to /student");
-          router.push("/student");
+          window.location.href = "/student";
         }
       } else {
         setError("Authentication failed. Please try again.");
