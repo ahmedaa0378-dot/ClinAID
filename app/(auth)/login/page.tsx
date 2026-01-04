@@ -76,7 +76,7 @@ export default function LoginPage() {
             "/student";
           
           console.log("Redirecting to:", redirectPath);
-          router.push(redirectPath);
+window.location.href = redirectPath;
         } else {
           console.log("No profile found, redirecting to /student");
           router.push("/student");
