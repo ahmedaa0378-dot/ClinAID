@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-interface Symptom {
+export interface Symptom {
   id: string;
   name: string;
   description: string;
@@ -8,20 +8,20 @@ interface Symptom {
   category?: string;
 }
 
-interface QuestionOption {
+export interface QuestionOption {
   id: string;
   text: string;
   clinicalSignificance: string;
 }
 
-interface Question {
+export interface Question {
   id: string;
   question: string;
   clinicalRationale: string;
   options: QuestionOption[];
 }
 
-interface Diagnosis {
+export interface Diagnosis {
   name: string;
   icdCode: string;
   probability: "high" | "moderate" | "low";
@@ -31,10 +31,9 @@ interface Diagnosis {
   contradictingFindings: string[];
   redFlags: string[];
   nextSteps: string[];
-  differentialConsiderations: string;
 }
 
-interface DiagnosisResponse {
+export interface DiagnosisResponse {
   diagnoses: Diagnosis[];
   clinicalPearl: string;
   urgencyLevel: "routine" | "urgent" | "emergent";
@@ -64,9 +63,7 @@ export function useAnalyzerAI() {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch symptoms");
-      }
+      if (!response.ok) throw new Error("Failed to fetch symptoms");
 
       const data = await response.json();
       return data.symptoms || [];
@@ -78,7 +75,7 @@ export function useAnalyzerAI() {
     }
   };
 
-  // Fetch follow-up questions based on symptoms
+  // Fetch follow-up questions
   const fetchQuestions = async (
     regionName: string,
     symptoms: Array<{ id: string; name: string; isRedFlag: boolean }>,
@@ -99,9 +96,7 @@ export function useAnalyzerAI() {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch questions");
-      }
+      if (!response.ok) throw new Error("Failed to fetch questions");
 
       const data = await response.json();
       return data.questions || [];
@@ -136,12 +131,9 @@ export function useAnalyzerAI() {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch diagnosis");
-      }
+      if (!response.ok) throw new Error("Failed to fetch diagnosis");
 
-      const data = await response.json();
-      return data;
+      return await response.json();
     } catch (err: any) {
       setError(err.message);
       return null;
@@ -158,5 +150,3 @@ export function useAnalyzerAI() {
     fetchDiagnosis,
   };
 }
-
-export type { Symptom, Question, QuestionOption, Diagnosis, DiagnosisResponse };
