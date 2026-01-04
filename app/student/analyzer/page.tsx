@@ -1,198 +1,506 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useBodyRegions } from "@/hooks/useBodyRegions";
+import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
+import HumanBodySVG from "@/components/analyzer/HumanBodySVG";
+import SymptomMindMap from "@/components/analyzer/SymptomMindMap";
+import AIChatInterface from "@/components/analyzer/AIChatInterface";
 import {
-  Brain,
-  Heart,
-  CircleDot,
-  Columns,
-  Activity,
-  Hand,
-  Footprints,
-  Scan,
   Stethoscope,
-  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  RotateCcw,
+  FileText,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  Info,
 } from "lucide-react";
-import { LucideIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
-const iconMap: Record<string, LucideIcon> = {
-  "head-neck": Brain,
-  "chest": Heart,
-  "abdomen": CircleDot,
-  "back": Columns,
-  "pelvis-groin": Activity,
-  "arms-hands": Hand,
-  "legs-feet": Footprints,
-  "skin": Scan,
-};
+type Step = "body" | "symptoms" | "chat" | "results";
 
-const gradients = [
-  "from-emerald-500/20 via-teal-500/20 to-cyan-500/20",
-  "from-cyan-500/20 via-blue-500/20 to-indigo-500/20",
-  "from-teal-500/20 via-emerald-500/20 to-green-500/20",
-  "from-blue-500/20 via-cyan-500/20 to-teal-500/20",
-  "from-emerald-500/20 via-cyan-500/20 to-blue-500/20",
-  "from-cyan-500/20 via-teal-500/20 to-emerald-500/20",
-  "from-teal-500/20 via-cyan-500/20 to-blue-500/20",
-  "from-emerald-500/20 via-green-500/20 to-teal-500/20",
-];
-
-const getIconForRegion = (name: string): LucideIcon => {
-  const lowerName = name.toLowerCase();
-  if (lowerName.includes("head") || lowerName.includes("neck")) return Brain;
-  if (lowerName.includes("chest")) return Heart;
-  if (lowerName.includes("abdomen")) return CircleDot;
-  if (lowerName.includes("back")) return Columns;
-  if (lowerName.includes("pelvis") || lowerName.includes("groin")) return Activity;
-  if (lowerName.includes("arm") || lowerName.includes("hand")) return Hand;
-  if (lowerName.includes("leg") || lowerName.includes("feet") || lowerName.includes("foot")) return Footprints;
-  if (lowerName.includes("skin")) return Scan;
-  return Stethoscope;
-};
-
-function BodySystemCard({
-  region,
-  gradient,
-  onClick,
-}: {
-  region: any;
-  gradient: string;
-  onClick: () => void;
-}) {
-  const Icon = getIconForRegion(region.name);
-
-  return (
-    <button
-      onClick={onClick}
-      className="group relative overflow-hidden rounded-2xl bg-white border border-gray-200 hover:border-emerald-400 transition-all duration-300 hover:shadow-xl hover:shadow-emerald-500/20 hover:-translate-y-1 text-left"
-    >
-      <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-
-      <div className="relative p-6">
-        <div className="flex items-start gap-4">
-          <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-            <Icon className="h-7 w-7 text-white" />
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-emerald-600 transition-colors">
-              {region.display_name}
-            </h3>
-            <p className="text-sm text-gray-600 line-clamp-2">
-              {region.description}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 flex items-center text-sm font-medium text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-          <span>Start Assessment</span>
-          <svg className="ml-1 w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </div>
-      </div>
-
-      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-emerald-500/10 to-transparent rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500" />
-    </button>
-  );
+interface Symptom {
+  id: string;
+  name: string;
+  description: string;
+  isRedFlag: boolean;
 }
 
-function SkeletonCard() {
-  return (
-    <div className="rounded-2xl bg-white border border-gray-200 p-6 animate-pulse">
-      <div className="flex items-start gap-4">
-        <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-gray-200" />
-        <div className="flex-1 space-y-2">
-          <div className="h-5 bg-gray-200 rounded w-3/4" />
-          <div className="h-4 bg-gray-200 rounded w-full" />
-        </div>
-      </div>
-    </div>
-  );
+interface DiagnosisResult {
+  name: string;
+  probability: "high" | "moderate" | "low";
+  confidence: number;
+  description: string;
+  supportingFindings: string[];
+  redFlags?: string[];
 }
 
 export default function SymptomAnalyzerPage() {
   const router = useRouter();
-  const { regions, loading, error } = useBodyRegions(null);
+  const { user, profile } = useAuth();
+  
+  const [currentStep, setCurrentStep] = useState<Step>("body");
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
+  const [selectedRegionName, setSelectedRegionName] = useState<string>("");
+  const [selectedSymptoms, setSelectedSymptoms] = useState<Symptom[]>([]);
+  const [diagnoses, setDiagnoses] = useState<DiagnosisResult[]>([]);
+  const [selectedDiagnosis, setSelectedDiagnosis] = useState<string | null>(null);
+  const [showResetDialog, setShowResetDialog] = useState(false);
 
-  const handleRegionClick = (regionId: string) => {
-    router.push(`/student/analyzer/session/new?region=${regionId}`);
+  // Handle body region selection
+  const handleRegionClick = (regionId: string, regionName: string) => {
+    setSelectedRegion(regionId);
+    setSelectedRegionName(regionName);
   };
+
+  // Handle symptom selection
+  const handleSymptomSelect = (symptom: Symptom) => {
+    setSelectedSymptoms((prev) => [...prev, symptom]);
+  };
+
+  const handleSymptomDeselect = (symptomId: string) => {
+    setSelectedSymptoms((prev) => prev.filter((s) => s.id !== symptomId));
+  };
+
+  // Handle chat completion
+  const handleChatComplete = (results: DiagnosisResult[]) => {
+    setDiagnoses(results);
+    setCurrentStep("results");
+  };
+
+  // Reset analyzer
+  const handleReset = () => {
+    setCurrentStep("body");
+    setSelectedRegion(null);
+    setSelectedRegionName("");
+    setSelectedSymptoms([]);
+    setDiagnoses([]);
+    setSelectedDiagnosis(null);
+    setShowResetDialog(false);
+  };
+
+  // Navigate to next step
+  const goToNextStep = () => {
+    if (currentStep === "body" && selectedRegion) {
+      setCurrentStep("symptoms");
+    } else if (currentStep === "symptoms" && selectedSymptoms.length > 0) {
+      setCurrentStep("chat");
+    }
+  };
+
+  // Navigate to previous step
+  const goToPreviousStep = () => {
+    if (currentStep === "symptoms") {
+      setCurrentStep("body");
+    } else if (currentStep === "chat") {
+      setCurrentStep("symptoms");
+    } else if (currentStep === "results") {
+      setCurrentStep("chat");
+    }
+  };
+
+  // Get probability badge color
+  const getProbabilityColor = (probability: string) => {
+    switch (probability) {
+      case "high":
+        return "bg-red-100 text-red-700 border-red-200";
+      case "moderate":
+        return "bg-yellow-100 text-yellow-700 border-yellow-200";
+      case "low":
+        return "bg-green-100 text-green-700 border-green-200";
+      default:
+        return "bg-gray-100 text-gray-700";
+    }
+  };
+
+  // Step indicators
+  const steps = [
+    { id: "body", label: "Select Region", icon: "🫀" },
+    { id: "symptoms", label: "Symptoms", icon: "🔍" },
+    { id: "chat", label: "AI Analysis", icon: "🤖" },
+    { id: "results", label: "Diagnosis", icon: "📋" },
+  ];
+
+  const currentStepIndex = steps.findIndex((s) => s.id === currentStep);
 
   return (
     <div className="min-h-screen">
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 p-8 mb-8">
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.1)_1px,transparent_1px)] bg-[size:30px_30px]" />
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
-
-        <div className="relative">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-              <Stethoscope className="h-6 w-6 text-white" />
-            </div>
-            <h1 className="text-4xl font-bold text-white">Symptom Analyzer</h1>
-          </div>
-          <p className="text-white/90 text-lg max-w-3xl leading-relaxed">
-            Practice clinical diagnosis by analyzing patient symptoms. Select a body system to begin your diagnostic training session.
-            This AI-powered tool will guide you through a systematic clinical reasoning process.
-          </p>
-
-          <div className="mt-6 flex items-center gap-2 text-white/80 text-sm">
-            <AlertCircle className="h-4 w-4" />
-            <span>Interactive clinical case simulation for educational purposes</span>
-          </div>
-        </div>
-      </div>
-
-      {error && (
-        <div className="mb-8 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
-          <AlertCircle className="h-5 w-5 flex-shrink-0" />
-          <p>Failed to load body systems: {error}</p>
-        </div>
-      )}
-
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Select Body System</h2>
-            <p className="text-gray-600 mt-1">Choose a region to start your assessment</p>
-          </div>
-          {!loading && regions.length > 0 && (
-            <div className="text-sm text-gray-500">
-              {regions.length} system{regions.length !== 1 ? 's' : ''} available
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-6">
-          {loading ? (
-            <>
-              {[...Array(8)].map((_, i) => (
-                <SkeletonCard key={i} />
-              ))}
-            </>
-          ) : regions.length === 0 ? (
-            <div className="col-span-full text-center py-12">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
-                <Stethoscope className="h-8 w-8 text-gray-400" />
+      {/* Header */}
+      <div className="mb-6">
+        <div className="bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                <Stethoscope className="h-7 w-7" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Body Systems Available</h3>
-              <p className="text-gray-600">Body system data is not configured yet.</p>
+              <div>
+                <h1 className="text-2xl font-bold">Symptom Analyzer</h1>
+                <p className="text-emerald-100">
+                  Interactive AI-powered clinical diagnosis training
+                </p>
+              </div>
             </div>
-          ) : (
-            regions.map((region, index) => (
-              <BodySystemCard
-                key={region.id}
-                region={region}
-                gradient={gradients[index % gradients.length]}
-                onClick={() => handleRegionClick(region.id)}
-              />
-            ))
-          )}
+            <Button
+              variant="ghost"
+              className="text-white hover:bg-white/20"
+              onClick={() => setShowResetDialog(true)}
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Start Over
+            </Button>
+          </div>
         </div>
       </div>
+
+      {/* Progress Steps */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between max-w-2xl mx-auto">
+          {steps.map((step, index) => (
+            <div key={step.id} className="flex items-center">
+              <div
+                className={`flex flex-col items-center ${
+                  index <= currentStepIndex ? "text-emerald-600" : "text-gray-400"
+                }`}
+              >
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
+                    index < currentStepIndex
+                      ? "bg-emerald-500 text-white"
+                      : index === currentStepIndex
+                      ? "bg-emerald-100 border-2 border-emerald-500"
+                      : "bg-gray-100"
+                  }`}
+                >
+                  {index < currentStepIndex ? (
+                    <CheckCircle2 className="h-5 w-5" />
+                  ) : (
+                    step.icon
+                  )}
+                </div>
+                <span className="text-xs mt-1 font-medium">{step.label}</span>
+              </div>
+              {index < steps.length - 1 && (
+                <div
+                  className={`w-16 md:w-24 h-1 mx-2 rounded ${
+                    index < currentStepIndex ? "bg-emerald-500" : "bg-gray-200"
+                  }`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <AnimatePresence mode="wait">
+        {/* Step 1: Body Selection */}
+        {currentStep === "body" && (
+          <motion.div
+            key="body"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className="grid grid-cols-1 lg:grid-cols-2 gap-8"
+          >
+            {/* Human Body SVG */}
+            <Card className="overflow-hidden">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <span className="text-2xl">🫀</span>
+                  Click on the affected body area
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <HumanBodySVG
+                  onRegionClick={handleRegionClick}
+                  selectedRegion={selectedRegion}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Info Panel */}
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <h3 className="font-semibold text-lg mb-4">How it works</h3>
+                  <div className="space-y-3">
+                    <div className="flex gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
+                        1
+                      </div>
+                      <div>
+                        <p className="font-medium">Select Body Region</p>
+                        <p className="text-sm text-gray-500">
+                          Click on the area where symptoms are present
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
+                        2
+                      </div>
+                      <div>
+                        <p className="font-medium">Pick Symptoms</p>
+                        <p className="text-sm text-gray-500">
+                          Select from the symptom mind map
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
+                        3
+                      </div>
+                      <div>
+                        <p className="font-medium">Answer Questions</p>
+                        <p className="text-sm text-gray-500">
+                          Chat with AI to refine diagnosis
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
+                        4
+                      </div>
+                      <div>
+                        <p className="font-medium">Get Differential Diagnosis</p>
+                        <p className="text-sm text-gray-500">
+                          Review AI-generated diagnoses
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Selected Region Info */}
+              {selectedRegion && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <Card className="border-emerald-200 bg-emerald-50">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-emerald-600">Selected Region</p>
+                          <p className="text-xl font-bold text-emerald-800">
+                            {selectedRegionName}
+                          </p>
+                        </div>
+                        <Button
+                          onClick={goToNextStep}
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                        >
+                          Continue
+                          <ChevronRight className="h-4 w-4 ml-1" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Step 2: Symptom Selection (Mind Map) */}
+        {currentStep === "symptoms" && (
+          <motion.div
+            key="symptoms"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+          >
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <span className="text-2xl">🔍</span>
+                    Select Symptoms - {selectedRegionName}
+                  </CardTitle>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Click on symptoms to select them
+                  </p>
+                </div>
+                <Button variant="outline" onClick={goToPreviousStep}>
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <SymptomMindMap
+                  regionName={selectedRegion || "head_neck"}
+                  regionDisplayName={selectedRegionName}
+                  onSymptomSelect={handleSymptomSelect}
+                  onSymptomDeselect={handleSymptomDeselect}
+                  selectedSymptoms={selectedSymptoms.map((s) => s.id)}
+                  onContinue={() => setCurrentStep("chat")}
+                />
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {/* Step 3: AI Chat */}
+        {currentStep === "chat" && (
+          <motion.div
+            key="chat"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className="max-w-3xl mx-auto"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <Button variant="outline" onClick={goToPreviousStep}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Symptoms
+              </Button>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">
+                  {selectedSymptoms.length} symptoms selected
+                </Badge>
+              </div>
+            </div>
+            
+            <AIChatInterface
+              regionName={selectedRegionName}
+              symptoms={selectedSymptoms.map((s) => ({
+                id: s.id,
+                name: s.name,
+                isRedFlag: s.isRedFlag,
+              }))}
+              onComplete={handleChatComplete}
+            />
+          </motion.div>
+        )}
+
+        {/* Step 4: Results */}
+        {currentStep === "results" && (
+          <motion.div
+            key="results"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className="max-w-4xl mx-auto"
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <span className="text-2xl">📋</span>
+                  Differential Diagnosis Results
+                </CardTitle>
+                <p className="text-sm text-gray-500">
+                  Based on your symptoms and responses, here are the possible diagnoses
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {diagnoses.map((diagnosis, index) => (
+                  <motion.div
+                    key={diagnosis.name}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      selectedDiagnosis === diagnosis.name
+                        ? "border-emerald-400 bg-emerald-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                    onClick={() => setSelectedDiagnosis(diagnosis.name)}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="font-semibold text-lg">{diagnosis.name}</h3>
+                          <Badge className={getProbabilityColor(diagnosis.probability)}>
+                            {diagnosis.probability} probability
+                          </Badge>
+                        </div>
+                        <p className="text-gray-600 text-sm mb-3">
+                          {diagnosis.description}
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {diagnosis.supportingFindings.map((finding) => (
+                            <Badge key={finding} variant="secondary" className="text-xs">
+                              {finding}
+                            </Badge>
+                          ))}
+                        </div>
+                        {diagnosis.redFlags && diagnosis.redFlags.length > 0 && (
+                          <div className="mt-3 p-2 bg-red-50 rounded-lg">
+                            <p className="text-xs text-red-700 flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              Red flags: {diagnosis.redFlags.join(", ")}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right ml-4">
+                        <div className="text-2xl font-bold text-emerald-600">
+                          {Math.round(diagnosis.confidence * 100)}%
+                        </div>
+                        <p className="text-xs text-gray-500">confidence</p>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <Button variant="outline" onClick={() => setShowResetDialog(true)}>
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Start New Analysis
+                  </Button>
+                  <Button
+                    disabled={!selectedDiagnosis}
+                    className="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600"
+                    onClick={() => {
+                      // Navigate to report generation
+                      router.push(`/student/analyzer/report?diagnosis=${encodeURIComponent(selectedDiagnosis || "")}`);
+                    }}
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Generate Report
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Reset Confirmation Dialog */}
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Start Over?</DialogTitle>
+            <DialogDescription>
+              This will clear all your selections and start a new analysis session.
+              Are you sure you want to continue?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3 mt-4">
+            <Button variant="outline" onClick={() => setShowResetDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleReset} variant="destructive">
+              Yes, Start Over
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
