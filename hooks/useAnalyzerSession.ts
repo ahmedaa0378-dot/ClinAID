@@ -1,187 +1,186 @@
+"use client";
+
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
 
-interface SessionData {
+// Types
+export interface AnalysisSession {
   id: string;
   student_id: string;
-  status: string;
   student_level: string;
-  initial_body_region_id?: string;
+  body_region: string;
+  body_region_display_name: string;
   initial_complaint?: string;
+  status: "in_progress" | "completed" | "submitted" | "reviewed";
   started_at: string;
   completed_at?: string;
-  total_steps?: number;
-  time_spent_seconds?: number;
+  total_steps: number;
+  time_spent_seconds: number;
 }
 
-interface SessionStep {
+export interface SessionSymptom {
+  id: string;
+  session_id: string;
+  symptom_id: string;
+  symptom_name: string;
+  symptom_description?: string;
+  is_red_flag: boolean;
+}
+
+export interface SessionStep {
   id: string;
   session_id: string;
   step_number: number;
-  step_type: string;
   question_text: string;
-  question_explanation?: string;
-  options_presented: any;
+  question_rationale?: string;
+  options_presented?: any;
   selected_option_id?: string;
   selected_option_text?: string;
-  ai_model_used?: string;
-  ai_confidence_score?: number;
+  is_custom_response: boolean;
 }
 
-interface Symptom {
+export interface DifferentialDiagnosis {
   id: string;
-  name: string;
-  isRedFlag: boolean;
+  session_id: string;
+  diagnosis_name: string;
+  icd_code?: string;
+  probability: "high" | "moderate" | "low";
+  confidence_score: number;
+  description?: string;
+  supporting_findings: string[];
+  red_flags: string[];
+  next_steps: string[];
+  display_order: number;
+  is_selected: boolean;
 }
 
-interface Diagnosis {
-  name: string;
-  icdCode?: string;
-  probability: string;
-  confidence: number;
-  description: string;
-  supportingFindings: string[];
-  redFlags?: string[];
+export interface ClinicalReport {
+  id: string;
+  session_id: string;
+  report_title?: string;
+  primary_diagnosis: string;
+  soap_note?: any;
+  educational_content?: any;
+  clinical_pearls?: string[];
+  suggested_references?: string[];
+  student_notes?: string;
 }
 
 export function useAnalyzerSession() {
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Create a new analysis session
   const createSession = async (
-    studentId: string,
-    regionId?: string,
-    initialComplaint?: string
-  ): Promise<string | null> => {
+    bodyRegion: string,
+    bodyRegionDisplayName: string,
+    studentLevel: string = "R1"
+  ): Promise<AnalysisSession | null> => {
+    if (!user) {
+      setError("User not authenticated");
+      return null;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      // Get student level from users table
-      const { data: userData } = await supabase
-        .from("users")
-        .select("student_type")
-        .eq("id", studentId)
-        .single();
-
-      const studentLevel = userData?.student_type || "R1";
-
-      // Create session
-      const { data, error: insertError } = await supabase
+      const { data, error: dbError } = await supabase
         .from("analysis_sessions")
         .insert({
-          student_id: studentId,
+          student_id: user.id,
           student_level: studentLevel,
-          initial_body_region_id: regionId,
-          initial_complaint: initialComplaint,
+          body_region: bodyRegion,
+          body_region_display_name: bodyRegionDisplayName,
           status: "in_progress",
-          started_at: new Date().toISOString(),
-          last_activity_at: new Date().toISOString(),
         })
         .select()
         .single();
 
-      if (insertError) throw insertError;
-
-      setSessionId(data.id);
-      return data.id;
+      if (dbError) throw dbError;
+      return data;
     } catch (err: any) {
-      setError(err.message);
       console.error("Error creating session:", err);
+      setError(err.message);
       return null;
     } finally {
       setLoading(false);
     }
   };
 
-  // Add symptoms to session
-  const addSymptoms = async (
+  // Save symptoms for a session
+  const saveSymptoms = async (
     sessionId: string,
-    symptoms: Symptom[],
-    regionId: string
+    symptoms: { id: string; name: string; description?: string; isRedFlag: boolean }[]
   ): Promise<boolean> => {
     setLoading(true);
     setError(null);
 
     try {
-      const symptomRecords = symptoms.map((symptom) => ({
+      const symptomsData = symptoms.map((s) => ({
         session_id: sessionId,
-        body_region_id: regionId,
-        symptom_name: symptom.name,
-        is_red_flag: symptom.isRedFlag,
-        reported_at: new Date().toISOString(),
+        symptom_id: s.id,
+        symptom_name: s.name,
+        symptom_description: s.description || "",
+        is_red_flag: s.isRedFlag,
       }));
 
-      const { error: insertError } = await supabase
+      const { error: dbError } = await supabase
         .from("session_symptoms")
-        .insert(symptomRecords);
+        .insert(symptomsData);
 
-      if (insertError) throw insertError;
-
-      // Update session activity
-      await supabase
-        .from("analysis_sessions")
-        .update({ last_activity_at: new Date().toISOString() })
-        .eq("id", sessionId);
-
+      if (dbError) throw dbError;
       return true;
     } catch (err: any) {
+      console.error("Error saving symptoms:", err);
       setError(err.message);
-      console.error("Error adding symptoms:", err);
       return false;
     } finally {
       setLoading(false);
     }
   };
 
-  // Add a Q&A step to session
-  const addStep = async (
+  // Save a Q&A step
+  const saveStep = async (
     sessionId: string,
     stepNumber: number,
-    stepType: string,
     questionText: string,
-    questionExplanation: string,
-    options: any[],
-    selectedOptionId?: string,
-    selectedOptionText?: string
-  ): Promise<string | null> => {
+    questionRationale: string,
+    optionsPresented: any[],
+    selectedOptionId: string,
+    selectedOptionText: string,
+    isCustomResponse: boolean = false
+  ): Promise<boolean> => {
     setLoading(true);
     setError(null);
 
     try {
-      const { data, error: insertError } = await supabase
-        .from("session_steps")
-        .insert({
-          session_id: sessionId,
-          step_number: stepNumber,
-          step_type: stepType,
-          question_text: questionText,
-          question_explanation: questionExplanation,
-          options_presented: options,
-          selected_option_id: selectedOptionId,
-          selected_option_text: selectedOptionText,
-          ai_model_used: "gpt-4o",
-          presented_at: new Date().toISOString(),
-          answered_at: selectedOptionId ? new Date().toISOString() : null,
-        })
-        .select()
-        .single();
+      const { error: dbError } = await supabase.from("session_steps").insert({
+        session_id: sessionId,
+        step_number: stepNumber,
+        question_text: questionText,
+        question_rationale: questionRationale,
+        options_presented: optionsPresented,
+        selected_option_id: selectedOptionId,
+        selected_option_text: selectedOptionText,
+        is_custom_response: isCustomResponse,
+      });
 
-      if (insertError) throw insertError;
+      if (dbError) throw dbError;
 
-      // Update session activity
+      // Update total steps in session
       await supabase
         .from("analysis_sessions")
-        .update({ last_activity_at: new Date().toISOString() })
+        .update({ total_steps: stepNumber })
         .eq("id", sessionId);
 
-      return data.id;
+      return true;
     } catch (err: any) {
+      console.error("Error saving step:", err);
       setError(err.message);
-      console.error("Error adding step:", err);
-      return null;
+      return false;
     } finally {
       setLoading(false);
     }
@@ -190,248 +189,208 @@ export function useAnalyzerSession() {
   // Save differential diagnoses
   const saveDiagnoses = async (
     sessionId: string,
-    diagnoses: Diagnosis[]
+    diagnoses: {
+      name: string;
+      icdCode?: string;
+      probability: "high" | "moderate" | "low";
+      confidence: number;
+      description?: string;
+      supportingFindings?: string[];
+      redFlags?: string[];
+      nextSteps?: string[];
+    }[],
+    selectedDiagnosisName?: string
   ): Promise<boolean> => {
     setLoading(true);
     setError(null);
 
     try {
-      const diagnosisRecords = diagnoses.map((diagnosis, index) => ({
+      const diagnosesData = diagnoses.map((d, index) => ({
         session_id: sessionId,
-        diagnosis_name: diagnosis.name,
-        diagnosis_code: diagnosis.icdCode,
-        probability: diagnosis.probability,
-        confidence_score: diagnosis.confidence,
-        supporting_findings: diagnosis.supportingFindings,
-        red_flags: diagnosis.redFlags || [],
-        brief_description: diagnosis.description,
+        diagnosis_name: d.name,
+        icd_code: d.icdCode || null,
+        probability: d.probability,
+        confidence_score: d.confidence,
+        description: d.description || "",
+        supporting_findings: d.supportingFindings || [],
+        red_flags: d.redFlags || [],
+        next_steps: d.nextSteps || [],
         display_order: index + 1,
+        is_selected: d.name === selectedDiagnosisName,
       }));
 
-      const { error: insertError } = await supabase
+      const { error: dbError } = await supabase
         .from("differential_diagnoses")
-        .insert(diagnosisRecords);
+        .insert(diagnosesData);
 
-      if (insertError) throw insertError;
-
+      if (dbError) throw dbError;
       return true;
     } catch (err: any) {
-      setError(err.message);
       console.error("Error saving diagnoses:", err);
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Save final diagnosis selection
-  const saveFinalDiagnosis = async (
-    sessionId: string,
-    differentialId: string,
-    diagnosisName: string,
-    diagnosisCode: string,
-    studentRationale?: string
-  ): Promise<boolean> => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const { error: insertError } = await supabase
-        .from("final_diagnosis")
-        .insert({
-          session_id: sessionId,
-          differential_id: differentialId,
-          diagnosis_name: diagnosisName,
-          diagnosis_code: diagnosisCode,
-          student_rationale: studentRationale,
-          confirmed_at: new Date().toISOString(),
-        });
-
-      if (insertError) throw insertError;
-
-      return true;
-    } catch (err: any) {
       setError(err.message);
-      console.error("Error saving final diagnosis:", err);
       return false;
     } finally {
       setLoading(false);
     }
   };
 
-  // Complete session
-  const completeSession = async (sessionId: string): Promise<boolean> => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Get session start time to calculate duration
-      const { data: session } = await supabase
-        .from("analysis_sessions")
-        .select("started_at")
-        .eq("id", sessionId)
-        .single();
-
-      const startTime = new Date(session?.started_at || new Date());
-      const timeSpent = Math.floor(
-        (new Date().getTime() - startTime.getTime()) / 1000
-      );
-
-      // Count steps
-      const { count } = await supabase
-        .from("session_steps")
-        .select("*", { count: "exact", head: true })
-        .eq("session_id", sessionId);
-
-      // Update session
-      const { error: updateError } = await supabase
-        .from("analysis_sessions")
-        .update({
-          status: "completed",
-          completed_at: new Date().toISOString(),
-          total_steps: count || 0,
-          time_spent_seconds: timeSpent,
-        })
-        .eq("id", sessionId);
-
-      if (updateError) throw updateError;
-
-      return true;
-    } catch (err: any) {
-      setError(err.message);
-      console.error("Error completing session:", err);
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Create clinical report
-  const createReport = async (
+  // Save clinical report
+  const saveReport = async (
     sessionId: string,
-    reportTitle: string,
-    content: {
-      subjective: any;
-      objective: any;
-      assessment: any;
-      plan: any;
-    },
-    executiveSummary?: string,
-    keyFindings?: string[]
-  ): Promise<string | null> => {
+    primaryDiagnosis: string,
+    reportData: {
+      reportTitle?: string;
+      soapNote?: any;
+      educationalContent?: any;
+      clinicalPearls?: string[];
+      suggestedReferences?: string[];
+      studentNotes?: string;
+    }
+  ): Promise<ClinicalReport | null> => {
     setLoading(true);
     setError(null);
 
     try {
-      const { data, error: insertError } = await supabase
+      const { data, error: dbError } = await supabase
         .from("clinical_reports")
         .insert({
           session_id: sessionId,
-          report_title: reportTitle,
-          subjective: content.subjective,
-          objective: content.objective,
-          assessment: content.assessment,
-          plan: content.plan,
-          content_json: content,
-          executive_summary: executiveSummary,
-          key_findings: keyFindings,
+          primary_diagnosis: primaryDiagnosis,
+          report_title: reportData.reportTitle || `Clinical Report - ${primaryDiagnosis}`,
+          soap_note: reportData.soapNote || {},
+          educational_content: reportData.educationalContent || {},
+          clinical_pearls: reportData.clinicalPearls || [],
+          suggested_references: reportData.suggestedReferences || [],
+          student_notes: reportData.studentNotes || "",
         })
         .select()
         .single();
 
-      if (insertError) throw insertError;
+      if (dbError) throw dbError;
 
-      return data.id;
+      // Update session status to completed
+      await supabase
+        .from("analysis_sessions")
+        .update({ status: "completed", completed_at: new Date().toISOString() })
+        .eq("id", sessionId);
+
+      return data;
     } catch (err: any) {
+      console.error("Error saving report:", err);
       setError(err.message);
-      console.error("Error creating report:", err);
       return null;
     } finally {
       setLoading(false);
     }
   };
 
-  // Submit for professor review
-  const submitForReview = async (
+  // Update student notes on existing report
+  const updateStudentNotes = async (
     reportId: string,
-    studentId: string,
-    professorId: string,
-    studentNotes?: string
-  ): Promise<string | null> => {
+    studentNotes: string
+  ): Promise<boolean> => {
     setLoading(true);
     setError(null);
 
     try {
-      const { data, error: insertError } = await supabase
-        .from("submissions")
-        .insert({
-          report_id: reportId,
-          student_id: studentId,
-          professor_id: professorId,
-          student_notes: studentNotes,
-          status: "pending",
-          submitted_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+      const { error: dbError } = await supabase
+        .from("clinical_reports")
+        .update({ student_notes: studentNotes })
+        .eq("id", reportId);
 
-      if (insertError) throw insertError;
-
-      // Create notification for professor
-      const { data: profData } = await supabase
-        .from("professors")
-        .select("user_id")
-        .eq("id", professorId)
-        .single();
-
-      if (profData?.user_id) {
-        await supabase.from("notifications").insert({
-          user_id: profData.user_id,
-          title: "New Submission for Review",
-          message: "A student has submitted a diagnosis analysis for your review.",
-          notification_type: "submission_received",
-          entity_type: "submission",
-          entity_id: data.id,
-          action_url: `/professor/reviews/${data.id}`,
-        });
-      }
-
-      return data.id;
+      if (dbError) throw dbError;
+      return true;
     } catch (err: any) {
+      console.error("Error updating notes:", err);
       setError(err.message);
-      console.error("Error submitting for review:", err);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Get session with all related data
+  const getFullSession = async (sessionId: string) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Get session
+      const { data: session, error: sessionError } = await supabase
+        .from("analysis_sessions")
+        .select("*")
+        .eq("id", sessionId)
+        .single();
+
+      if (sessionError) throw sessionError;
+
+      // Get symptoms
+      const { data: symptoms } = await supabase
+        .from("session_symptoms")
+        .select("*")
+        .eq("session_id", sessionId);
+
+      // Get steps
+      const { data: steps } = await supabase
+        .from("session_steps")
+        .select("*")
+        .eq("session_id", sessionId)
+        .order("step_number");
+
+      // Get diagnoses
+      const { data: diagnoses } = await supabase
+        .from("differential_diagnoses")
+        .select("*")
+        .eq("session_id", sessionId)
+        .order("display_order");
+
+      // Get report
+      const { data: report } = await supabase
+        .from("clinical_reports")
+        .select("*")
+        .eq("session_id", sessionId)
+        .single();
+
+      return {
+        session,
+        symptoms: symptoms || [],
+        steps: steps || [],
+        diagnoses: diagnoses || [],
+        report,
+      };
+    } catch (err: any) {
+      console.error("Error fetching session:", err);
+      setError(err.message);
       return null;
     } finally {
       setLoading(false);
     }
   };
 
-  // Get session history for a student
-  const getStudentSessions = async (
-    studentId: string,
-    limit: number = 10
-  ): Promise<SessionData[]> => {
+  // Get student's recent sessions
+  const getRecentSessions = async (limit: number = 10) => {
+    if (!user) return [];
+
     setLoading(true);
     setError(null);
 
     try {
-      const { data, error: fetchError } = await supabase
+      const { data, error: dbError } = await supabase
         .from("analysis_sessions")
         .select(`
           *,
-          body_regions:initial_body_region_id(display_name),
-          final_diagnosis(diagnosis_name)
+          clinical_reports (id, primary_diagnosis),
+          submissions (id, status)
         `)
-        .eq("student_id", studentId)
-        .order("started_at", { ascending: false })
+        .eq("student_id", user.id)
+        .order("created_at", { ascending: false })
         .limit(limit);
 
-      if (fetchError) throw fetchError;
-
+      if (dbError) throw dbError;
       return data || [];
     } catch (err: any) {
-      setError(err.message);
       console.error("Error fetching sessions:", err);
+      setError(err.message);
       return [];
     } finally {
       setLoading(false);
@@ -439,17 +398,15 @@ export function useAnalyzerSession() {
   };
 
   return {
-    sessionId,
     loading,
     error,
     createSession,
-    addSymptoms,
-    addStep,
+    saveSymptoms,
+    saveStep,
     saveDiagnoses,
-    saveFinalDiagnosis,
-    completeSession,
-    createReport,
-    submitForReview,
-    getStudentSessions,
+    saveReport,
+    updateStudentNotes,
+    getFullSession,
+    getRecentSessions,
   };
 }
