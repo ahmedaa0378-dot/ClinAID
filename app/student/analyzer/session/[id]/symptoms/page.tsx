@@ -185,7 +185,7 @@ export default function SymptomsPage() {
             <h1 className="text-2xl font-bold">Select Symptoms</h1>
           </div>
           <p className="text-emerald-100">
-            Choose all symptoms the patient is experiencing in the {region?.display_name} region
+            Choose all symptoms the patient is experiencing in the {region?.displayName} region
           </p>
         </div>
       </div>
@@ -197,11 +197,8 @@ export default function SymptomsPage() {
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <span>Selected Region:</span>
               <Badge variant="outline" className="bg-white">
-                {region.display_name}
+                {region.displayName}
               </Badge>
-              {region.medical_term && (
-                <span className="text-gray-400">({region.medical_term})</span>
-              )}
             </div>
           </CardContent>
         </Card>

@@ -514,10 +514,14 @@ export function useQuizzes() {
         .single();
 
       if (assignment) {
+        const quizTitle = Array.isArray(assignment.quiz) && assignment.quiz.length > 0
+          ? assignment.quiz[0].title
+          : "a quiz";
+
         await supabase.from("notifications").insert({
           user_id: assignment.assigned_by,
           title: "Quiz Completed",
-          message: `${profile?.full_name || "A student"} has completed ${assignment.quiz?.title || "a quiz"} with a score of ${scorePercentage.toFixed(0)}%`,
+          message: `${profile?.full_name || "A student"} has completed ${quizTitle} with a score of ${scorePercentage.toFixed(0)}%`,
           notification_type: "quiz_completed",
           entity_type: "quiz_result",
           entity_id: result.id,

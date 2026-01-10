@@ -262,7 +262,7 @@ export default function ReportPage() {
             </div>
             <div>
               <p className="text-sm text-gray-500">Level</p>
-              <p className="font-medium">{profile?.studentType || "R1"}</p>
+              <p className="font-medium">Medical Student</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Session ID</p>
@@ -285,18 +285,18 @@ export default function ReportPage() {
               <div className="pl-7 space-y-2">
                 <div>
                   <p className="text-sm text-gray-500">Chief Complaint / Body Region</p>
-                  <p className="text-gray-900">{region?.display_name} - {region?.description}</p>
+                  <p className="text-gray-900">{region?.displayName} - {region?.description}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Symptoms Reported</p>
                   <div className="flex flex-wrap gap-2 mt-1">
                     {symptoms.map((s) => (
-                      <Badge 
-                        key={s.id} 
-                        variant={s.is_red_flag ? "destructive" : "secondary"}
+                      <Badge
+                        key={s.id}
+                        variant={s.isRedFlag ? "destructive" : "secondary"}
                       >
                         {s.name}
-                        {s.is_red_flag && <AlertTriangle className="h-3 w-3 ml-1" />}
+                        {s.isRedFlag && <AlertTriangle className="h-3 w-3 ml-1" />}
                       </Badge>
                     ))}
                   </div>
