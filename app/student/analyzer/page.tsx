@@ -421,7 +421,15 @@ export default function SymptomAnalyzerPage() {
                   <Button
                     disabled={!selectedDiagnosis}
                     className="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600"
-                    onClick={() => router.push(`/student/analyzer/report?diagnosis=${encodeURIComponent(selectedDiagnosis || "")}`)}
+                    onClick={() => {
+                      const sessionId = crypto.randomUUID();
+                      const selectedDiag = diagnoses.find(d => d.name === selectedDiagnosis);
+                      if (selectedDiag) {
+                        router.push(
+                          `/student/analyzer/session/${sessionId}/report?region=${selectedRegion}&diagnosis=${encodeURIComponent(JSON.stringify(selectedDiag))}&symptoms=${encodeURIComponent(JSON.stringify(selectedSymptoms))}`
+                        );
+                      }
+                    }}
                   >
                     <FileText className="h-4 w-4 mr-2" />
                     Generate Report
