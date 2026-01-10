@@ -1,225 +1,346 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import {
-  Users,
-  BookOpen,
   ClipboardList,
-  Calendar,
-  TrendingUp,
+  Users,
+  CheckCircle2,
   Clock,
-  FileText,
-  MessageSquare,
-  ChevronRight,
   AlertCircle,
+  FileText,
+  TrendingUp,
+  BookOpen,
+  Bell,
+  ChevronRight,
+  Loader2,
 } from "lucide-react";
-
-const statsData = [
-  { label: "Total Students", value: "234", change: "+12 this month", icon: Users, color: "blue" },
-  { label: "Active Courses", value: "3", change: "", icon: BookOpen, color: "emerald" },
-  { label: "Pending Quizzes", value: "5", change: "2 need grading", icon: ClipboardList, color: "purple" },
-  { label: "Upcoming Sessions", value: "8", change: "Next: Today 2PM", icon: Calendar, color: "orange" },
-];
-
-const recentSubmissions = [
-  { student: "John Doe", quiz: "Cardiac Anatomy Quiz", score: 85, submitted: "10 mins ago", needsGrading: false },
-  { student: "Jane Smith", quiz: "ECG Interpretation", score: null, submitted: "1 hour ago", needsGrading: true },
-  { student: "Mike Johnson", quiz: "Cardiac Anatomy Quiz", score: 72, submitted: "2 hours ago", needsGrading: false },
-  { student: "Emily Brown", quiz: "Physiology Assessment", score: null, submitted: "3 hours ago", needsGrading: true },
-  { student: "David Wilson", quiz: "Cardiac Anatomy Quiz", score: 91, submitted: "5 hours ago", needsGrading: false },
-];
-
-const upcomingSessions = [
-  { student: "John Doe", topic: "ECG Doubts", time: "Today, 2:00 PM", type: "consultation" },
-  { student: "Class Session", topic: "Cardiac Physiology Review", time: "Today, 4:00 PM", type: "class" },
-  { student: "Jane Smith", topic: "Case Discussion", time: "Tomorrow, 10:00 AM", type: "consultation" },
-];
-
-const courseStats = [
-  { name: "Clinical Cardiology", students: 156, avgProgress: 68, avgScore: 78 },
-  { name: "ECG Interpretation", students: 45, avgProgress: 52, avgScore: 74 },
-  { name: "Advanced Cardiac Care", students: 33, avgProgress: 35, avgScore: 81 },
-];
-
-const pendingTasks = [
-  { task: "Grade ECG Interpretation Quiz", count: 12, urgent: true },
-  { task: "Review Assignment Submissions", count: 8, urgent: false },
-  { task: "Approve Student Enrollments", count: 3, urgent: false },
-  { task: "Update Course Materials", count: 1, urgent: false },
-];
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/context/AuthContext";
+import { useSubmissions } from "@/hooks/useSubmissions";
+import { useQuizzes } from "@/hooks/useQuizzes";
 
 export default function ProfessorDashboard() {
-  const getColorClasses = (color: string) => {
-    const colors: Record<string, { bg: string; text: string }> = {
-      blue: { bg: "bg-blue-100", text: "text-blue-600" },
-      emerald: { bg: "bg-emerald-100", text: "text-emerald-600" },
-      purple: { bg: "bg-purple-100", text: "text-purple-600" },
-      orange: { bg: "bg-orange-100", text: "text-orange-600" },
-    };
-    return colors[color] || colors.blue;
+  const router = useRouter();
+  const { profile } = useAuth();
+  const { getProfessorSubmissions, loading: submissionsLoading } = useSubmissions();
+  const { getProfessorQuizzes, loading: quizzesLoading } = useQuizzes();
+
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [quizzes, setQuizzes] = useState<any[]>([]);
+  const [stats, setStats] = useState({
+    pending: 0,
+    reviewed: 0,
+    totalStudents: 0,
+    avgReviewTime: 0,
+  });
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    const [subs, quizData] = await Promise.all([
+      getProfessorSubmissions(),
+      getProfessorQuizzes(),
+    ]);
+
+    setSubmissions(subs);
+    setQuizzes(quizData);
+
+    // Calculate stats
+    const pending = subs.filter((s: any) => s.status === "pending").length;
+    const reviewed = subs.filter((s: any) => ["approved", "revision_requested"].includes(s.status)).length;
+    const uniqueStudents = new Set(subs.map((s: any) => s.student_id)).size;
+
+    setStats({
+      pending,
+      reviewed,
+      totalStudents: uniqueStudents,
+      avgReviewTime: 24, // Placeholder
+    });
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "pending":
+        return <Badge className="bg-yellow-100 text-yellow-800">Pending</Badge>;
+      case "in_review":
+        return <Badge className="bg-blue-100 text-blue-800">In Review</Badge>;
+      case "approved":
+        return <Badge className="bg-green-100 text-green-800">Approved</Badge>;
+      case "revision_requested":
+        return <Badge className="bg-orange-100 text-orange-800">Revision Requested</Badge>;
+      default:
+        return <Badge>{status}</Badge>;
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   return (
     <div className="space-y-6">
-      {/* Welcome */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Welcome back, Dr. Smith!</h1>
-        <p className="text-gray-500 text-sm">Here's what's happening with your courses today.</p>
+      {/* Welcome Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Welcome back, {profile?.full_name?.split(" ")[0] || "Professor"}!
+          </h1>
+          <p className="text-gray-500">Here's an overview of your students' progress</p>
+        </div>
+        <Button onClick={() => router.push("/professor/quizzes/create")}>
+          <BookOpen className="h-4 w-4 mr-2" />
+          Create AI Quiz
+        </Button>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statsData.map((stat) => {
-          const Icon = stat.icon;
-          const colors = getColorClasses(stat.color);
-          return (
-            <div key={stat.label} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <Card className="bg-gradient-to-br from-yellow-50 to-amber-50 border-yellow-200">
+            <CardContent className="p-6">
               <div className="flex items-center justify-between">
-                <div className={`w-12 h-12 ${colors.bg} rounded-xl flex items-center justify-center`}>
-                  <Icon className={`h-6 w-6 ${colors.text}`} />
+                <div>
+                  <p className="text-sm text-yellow-700 font-medium">Pending Reviews</p>
+                  <p className="text-3xl font-bold text-yellow-800">{stats.pending}</p>
+                </div>
+                <div className="w-12 h-12 bg-yellow-200 rounded-xl flex items-center justify-center">
+                  <Clock className="h-6 w-6 text-yellow-700" />
                 </div>
               </div>
-              <p className="text-2xl font-bold text-gray-900 mt-3">{stat.value}</p>
-              <p className="text-sm text-gray-500">{stat.label}</p>
-              {stat.change && <p className="text-xs text-gray-400 mt-1">{stat.change}</p>}
-            </div>
-          );
-        })}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-green-700 font-medium">Reviewed</p>
+                  <p className="text-3xl font-bold text-green-800">{stats.reviewed}</p>
+                </div>
+                <div className="w-12 h-12 bg-green-200 rounded-xl flex items-center justify-center">
+                  <CheckCircle2 className="h-6 w-6 text-green-700" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-blue-700 font-medium">Total Students</p>
+                  <p className="text-3xl font-bold text-blue-800">{stats.totalStudents}</p>
+                </div>
+                <div className="w-12 h-12 bg-blue-200 rounded-xl flex items-center justify-center">
+                  <Users className="h-6 w-6 text-blue-700" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <Card className="bg-gradient-to-br from-purple-50 to-violet-50 border-purple-200">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-purple-700 font-medium">Active Quizzes</p>
+                  <p className="text-3xl font-bold text-purple-800">
+                    {quizzes.filter((q: any) => q.is_published).length}
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-purple-200 rounded-xl flex items-center justify-center">
+                  <BookOpen className="h-6 w-6 text-purple-700" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
 
+      {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Submissions */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Recent Submissions</h2>
-            <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">View All</button>
-          </div>
-          <div className="space-y-4">
-            {recentSubmissions.map((submission, index) => (
-              <div key={index} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
-                    <span className="text-gray-600 text-sm font-medium">
-                      {submission.student.split(" ").map((n) => n[0]).join("")}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">{submission.student}</p>
-                    <p className="text-sm text-gray-500">{submission.quiz}</p>
-                  </div>
+        {/* Pending Submissions */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="h-5 w-5 text-emerald-500" />
+                Pending Submissions
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => router.push("/professor/submissions")}>
+                View All
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {submissionsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
                 </div>
-                <div className="text-right">
-                  {submission.needsGrading ? (
-                    <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">
-                      Needs Grading
-                    </span>
-                  ) : (
-                    <span className="text-lg font-bold text-gray-900">{submission.score}%</span>
-                  )}
-                  <p className="text-xs text-gray-400 mt-1">{submission.submitted}</p>
+              ) : submissions.filter((s) => s.status === "pending").length === 0 ? (
+                <div className="text-center py-8">
+                  <CheckCircle2 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">No pending submissions</p>
+                  <p className="text-sm text-gray-400">You're all caught up!</p>
                 </div>
-              </div>
-            ))}
-          </div>
+              ) : (
+                <div className="space-y-3">
+                  {submissions
+                    .filter((s) => s.status === "pending")
+                    .slice(0, 5)
+                    .map((submission) => (
+                      <motion.div
+                        key={submission.id}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer"
+                        onClick={() => router.push(`/professor/submissions/${submission.id}`)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
+                            <span className="text-emerald-700 font-semibold">
+                              {submission.student?.full_name?.charAt(0) || "S"}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-800">
+                              {submission.student?.full_name || "Student"}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              {submission.clinical_reports?.primary_diagnosis || "Clinical Analysis"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          {getStatusBadge(submission.status)}
+                          <p className="text-xs text-gray-400 mt-1">
+                            {formatDate(submission.submitted_at)}
+                          </p>
+                        </div>
+                      </motion.div>
+                    ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Pending Tasks */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Pending Tasks</h2>
-          <div className="space-y-3">
-            {pendingTasks.map((task, index) => (
-              <div
-                key={index}
-                className={`flex items-center justify-between p-3 rounded-lg ${
-                  task.urgent ? "bg-red-50" : "bg-gray-50"
-                }`}
+        {/* Quick Actions & Recent Activity */}
+        <div className="space-y-6">
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => router.push("/professor/submissions?status=pending")}
               >
-                <div className="flex items-center gap-3">
-                  {task.urgent && <AlertCircle className="h-5 w-5 text-red-500" />}
-                  <span className={`text-sm ${task.urgent ? "text-red-700 font-medium" : "text-gray-700"}`}>
-                    {task.task}
-                  </span>
-                </div>
-                <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                  task.urgent ? "bg-red-100 text-red-700" : "bg-gray-200 text-gray-600"
-                }`}>
-                  {task.count}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+                <AlertCircle className="h-4 w-4 mr-2 text-yellow-500" />
+                Review Pending ({stats.pending})
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => router.push("/professor/quizzes/create")}
+              >
+                <BookOpen className="h-4 w-4 mr-2 text-blue-500" />
+                Create AI Quiz
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => router.push("/professor/quizzes")}
+              >
+                <TrendingUp className="h-4 w-4 mr-2 text-green-500" />
+                View Quiz Results
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => router.push("/professor/students")}
+              >
+                <Users className="h-4 w-4 mr-2 text-purple-500" />
+                Manage Students
+              </Button>
+            </CardContent>
+          </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Upcoming Sessions */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Upcoming Sessions</h2>
-            <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">View All</button>
-          </div>
-          <div className="space-y-3">
-            {upcomingSessions.map((session, index) => (
-              <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    session.type === "class" ? "bg-blue-100" : "bg-emerald-100"
-                  }`}>
-                    {session.type === "class" ? (
-                      <Users className="h-5 w-5 text-blue-600" />
-                    ) : (
-                      <MessageSquare className="h-5 w-5 text-emerald-600" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">{session.student}</p>
-                    <p className="text-sm text-gray-500">{session.topic}</p>
-                  </div>
+          {/* Recent Quizzes */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg">Your Quizzes</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => router.push("/professor/quizzes")}>
+                View All
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {quizzesLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">{session.time}</p>
-                  <button className="text-xs text-blue-600 hover:text-blue-700 mt-1">Start</button>
+              ) : quizzes.length === 0 ? (
+                <div className="text-center py-4">
+                  <BookOpen className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">No quizzes created yet</p>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Course Performance */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Course Performance</h2>
-            <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">Details</button>
-          </div>
-          <div className="space-y-4">
-            {courseStats.map((course) => (
-              <div key={course.name} className="p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="font-medium text-gray-900">{course.name}</p>
-                  <span className="text-sm text-gray-500">{course.students} students</span>
-                </div>
-                <div className="grid grid-cols-2 gap-4 mt-3">
-                  <div>
-                    <p className="text-xs text-gray-500">Avg Progress</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${course.avgProgress}%` }} />
+              ) : (
+                <div className="space-y-2">
+                  {quizzes.slice(0, 3).map((quiz: any) => (
+                    <div
+                      key={quiz.id}
+                      className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                      onClick={() => router.push(`/professor/quizzes/${quiz.id}`)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium text-sm text-gray-800">{quiz.title}</p>
+                        <Badge variant={quiz.is_published ? "default" : "secondary"}>
+                          {quiz.is_published ? "Published" : "Draft"}
+                        </Badge>
                       </div>
-                      <span className="text-sm font-medium text-gray-900">{course.avgProgress}%</span>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {quiz.total_questions} questions • {quiz.difficulty_level}
+                      </p>
                     </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Avg Score</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${course.avgScore}%` }} />
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">{course.avgScore}%</span>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
