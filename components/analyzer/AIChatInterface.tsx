@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, User, Loader2, CheckCircle2, AlertTriangle, Sparkles } from "lucide-react";
+import { Bot, User, Loader2, CheckCircle2, AlertTriangle, Sparkles, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useAnalyzerAI, Question, DiagnosisResponse } from "@/hooks/useAnalyzerAI";
 
 interface Message {
@@ -141,7 +142,10 @@ export default function AIChatInterface({
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isAIGenerated, setIsAIGenerated] = useState(false);
   const [initComplete, setInitComplete] = useState(false);
+  const [userInput, setUserInput] = useState("");
+  const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const { fetchQuestions, fetchDiagnosis } = useAnalyzerAI();
 
@@ -178,7 +182,7 @@ export default function AIChatInterface({
           setQuestions(aiQuestions);
           setIsAIGenerated(true);
           setIsTyping(false);
-          await addAIMessage("✨ I've generated clinical questions based on your symptoms.");
+          await addAIMessage("✨ I've generated clinical questions based on your symptoms. You can **click an option** or **type your own response** below.");
           askQuestion(aiQuestions[0]);
         } else {
           throw new Error("No questions returned");
@@ -189,7 +193,7 @@ export default function AIChatInterface({
         setQuestions(fallback);
         setIsAIGenerated(false);
         setIsTyping(false);
-        await addAIMessage("Let me ask you some questions to narrow down the diagnosis.");
+        await addAIMessage("Let me ask you some questions. You can **click an option** or **type your own response**.");
         askQuestion(fallback[0]);
       }
 
@@ -211,6 +215,13 @@ export default function AIChatInterface({
         resolve();
       }, 500);
     });
+  };
+
+  const addUserMessage = (content: string) => {
+    setMessages((prev) => [
+      ...prev,
+      { id: `user-${Date.now()}`, type: "user", content },
+    ]);
   };
 
   const askQuestion = async (question: Question) => {
@@ -235,10 +246,7 @@ export default function AIChatInterface({
 
   const handleOptionSelect = async (questionId: string, option: ChatOption) => {
     // Add user response
-    setMessages((prev) => [
-      ...prev,
-      { id: `user-${Date.now()}`, type: "user", content: option.text },
-    ]);
+    addUserMessage(option.text);
 
     // Mark answered
     setMessages((prev) =>
@@ -256,6 +264,44 @@ export default function AIChatInterface({
     await addAIMessage(acks[Math.floor(Math.random() * acks.length)]);
 
     // Next question or diagnosis
+    await proceedToNext(newAnswers);
+  };
+
+  const handleTextSubmit = async () => {
+    if (!userInput.trim() || isSending) return;
+
+    const text = userInput.trim();
+    setUserInput("");
+    setIsSending(true);
+
+    // Add user message
+    addUserMessage(text);
+
+    // Mark current question as answered with custom response
+    const currentQuestion = questions[currentQuestionIndex];
+    if (currentQuestion) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === currentQuestion.id ? { ...msg, selectedOption: "custom" } : msg
+        )
+      );
+    }
+
+    // Save answer
+    const questionId = currentQuestion?.id || `custom-${Date.now()}`;
+    const newAnswers = { ...answers, [questionId]: text };
+    setAnswers(newAnswers);
+
+    // AI response to custom input
+    await addAIMessage("Thank you for that detailed information. I've noted your response.");
+
+    setIsSending(false);
+
+    // Proceed to next
+    await proceedToNext(newAnswers);
+  };
+
+  const proceedToNext = async (newAnswers: Record<string, string>) => {
     const nextIndex = currentQuestionIndex + 1;
 
     if (nextIndex < questions.length) {
@@ -263,6 +309,13 @@ export default function AIChatInterface({
       setTimeout(() => askQuestion(questions[nextIndex]), 300);
     } else {
       await generateDiagnosis(newAnswers);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleTextSubmit();
     }
   };
 
@@ -313,8 +366,16 @@ export default function AIChatInterface({
     }
   };
 
+  // Check if current question is answered
+  const isCurrentQuestionAnswered = () => {
+    const currentQuestion = questions[currentQuestionIndex];
+    if (!currentQuestion) return true;
+    const msg = messages.find((m) => m.id === currentQuestion.id);
+    return msg?.selectedOption !== undefined;
+  };
+
   return (
-    <div className="flex flex-col h-[600px] bg-white rounded-2xl shadow-lg overflow-hidden">
+    <div className="flex flex-col h-[650px] bg-white rounded-2xl shadow-lg overflow-hidden">
       {/* Header */}
       <div className="bg-gradient-to-r from-emerald-500 to-cyan-500 px-6 py-4 flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
@@ -426,8 +487,41 @@ export default function AIChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Text Input Area */}
+      {!isCurrentQuestionAnswered() && (
+        <div className="px-4 py-3 bg-white border-t border-gray-200">
+          <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+            <span>💡</span>
+            <span>Click an option above <strong>OR</strong> type your own response below</span>
+          </div>
+          <div className="flex gap-2">
+            <textarea
+              ref={inputRef}
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type your response or describe your symptoms in detail..."
+              className="flex-1 px-4 py-3 border border-gray-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+              rows={2}
+              disabled={isSending || isTyping}
+            />
+            <Button
+              onClick={handleTextSubmit}
+              disabled={!userInput.trim() || isSending || isTyping}
+              className="bg-emerald-500 hover:bg-emerald-600 px-4 self-end"
+            >
+              {isSending ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Progress */}
-      <div className="px-4 py-2 bg-white border-t border-gray-100">
+      <div className="px-4 py-2 bg-gray-50 border-t border-gray-100">
         <div className="flex items-center justify-between text-xs text-gray-500">
           <span>
             {questions.length > 0
