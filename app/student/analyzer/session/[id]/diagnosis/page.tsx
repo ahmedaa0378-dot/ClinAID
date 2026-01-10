@@ -308,7 +308,7 @@ export default function DiagnosisPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-500 mb-1">Region</p>
-              <p className="font-medium">{region?.displayname}</p>
+              <p className="font-medium">{region?.displayName}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500 mb-1">Symptoms Reported</p>
