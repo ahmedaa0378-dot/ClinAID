@@ -262,7 +262,7 @@ export default function ReportPage() {
             </div>
             <div>
               <p className="text-sm text-gray-500">Level</p>
-              <p className="font-medium">{profile?.student_type || "R1"}</p>
+              <p className="font-medium">{profile?.studentType || "R1"}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Session ID</p>
