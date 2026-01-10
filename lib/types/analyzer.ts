@@ -27,8 +27,31 @@ export interface SessionSymptom {
   reported_at?: string;
 }
 
-// Differential Diagnosis Types
+// Differential Diagnosis Types (Database Schema)
 export interface DifferentialDiagnosis {
+  id: string;
+  session_id?: string;
+  diagnosis_name: string;
+  diagnosis_code?: string;
+  icd_code?: string;
+  probability: "high" | "moderate" | "low";
+  confidence_score: number;
+  description?: string;
+  brief_description?: string;
+  supporting_findings: string[];
+  contradicting_findings?: string[];
+  red_flags?: string[];
+  next_steps?: string[];
+  diagnostic_criteria?: string;
+  typical_presentation?: string;
+  guideline_source?: string;
+  display_order?: number;
+  is_selected?: boolean;
+  created_at?: string;
+}
+
+// Frontend Differential Diagnosis (for AI responses)
+export interface FrontendDifferentialDiagnosis {
   id: string;
   name: string;
   icdCode?: string;
@@ -40,24 +63,6 @@ export interface DifferentialDiagnosis {
   redFlags?: string[];
   nextSteps?: string[];
   isSelected?: boolean;
-}
-
-// Database Differential Diagnosis
-export interface DBDifferentialDiagnosis {
-  id: string;
-  session_id: string;
-  diagnosis_name: string;
-  icd_code?: string;
-  probability: "high" | "moderate" | "low";
-  confidence_score: number;
-  description?: string;
-  supporting_findings: string[];
-  contradicting_findings?: string[];
-  red_flags?: string[];
-  next_steps?: string[];
-  display_order: number;
-  is_selected: boolean;
-  created_at?: string;
 }
 
 // Analysis Session Types
