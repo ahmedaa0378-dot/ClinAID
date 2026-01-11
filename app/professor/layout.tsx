@@ -121,8 +121,8 @@ export default function ProfessorLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex lg:flex-col lg:w-72 lg:fixed lg:inset-y-0 bg-gray-950 overflow-hidden">
+      {/* Desktop Sidebar - Changed lg: to md: for smaller screens */}
+      <aside className="hidden md:flex md:flex-col md:w-72 md:fixed md:inset-y-0 bg-gray-950 overflow-hidden z-30">
         {/* Glowing Orbs */}
         <div className="absolute top-1/4 -left-20 w-60 h-60 bg-blue-500/20 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 -right-20 w-60 h-60 bg-cyan-500/20 rounded-full blur-3xl" />
@@ -132,8 +132,8 @@ export default function ProfessorLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* Mobile Header */}
-      <div className="lg:hidden bg-gray-950 text-white p-4 flex items-center justify-between sticky top-0 z-40">
+      {/* Mobile Header - Changed lg: to md: */}
+      <div className="md:hidden bg-gray-950 text-white p-4 flex items-center justify-between sticky top-0 z-40">
         <Link href="/professor" className="flex items-center gap-3">
           <img src="/logo.png" alt="ClinAid" className="h-8 w-8 object-contain" />
           <span className="font-bold">ClinAid</span>
@@ -143,9 +143,9 @@ export default function ProfessorLayout({ children }: { children: React.ReactNod
         </button>
       </div>
 
-      {/* Mobile Sidebar */}
+      {/* Mobile Sidebar - Changed lg: to md: */}
       {sidebarOpen && (
-        <div className="lg:hidden fixed inset-0 z-50">
+        <div className="md:hidden fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
           <aside className="absolute left-0 top-0 bottom-0 w-72 bg-gray-950 overflow-hidden">
             <div className="absolute top-1/4 -left-20 w-60 h-60 bg-blue-500/20 rounded-full blur-3xl" />
@@ -158,9 +158,9 @@ export default function ProfessorLayout({ children }: { children: React.ReactNod
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="lg:pl-72">
-        <div className="p-6 lg:p-8">{children}</div>
+      {/* Main Content - Changed lg: to md: */}
+      <main className="md:pl-72">
+        <div className="p-6 md:p-8">{children}</div>
       </main>
     </div>
   );
