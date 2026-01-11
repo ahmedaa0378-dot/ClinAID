@@ -74,6 +74,21 @@ export default function ReportPage() {
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [regionName, setRegionName] = useState<string>("-");
+
+  // Helper function to get diagnosis name
+  const getDiagnosisName = (diag: any): string => {
+    return diag?.diagnosis_name || diag?.name || diag?.diagnosisName || 'Unknown Diagnosis';
+  };
+
+  // Helper function to get confidence percentage
+  const getConfidencePercent = (diag: any): number => {
+    const score = diag?.confidence_score || diag?.confidenceScore || diag?.confidence || 0;
+    // If score is already a percentage (> 1), use as is; otherwise multiply by 100
+    const percent = Number(score);
+    if (isNaN(percent)) return 0;
+    return percent > 1 ? Math.round(percent) : Math.round(percent * 100);
+  };
 
   // Parse data and fetch professors
   useEffect(() => {
@@ -88,54 +103,79 @@ export default function ReportPage() {
       try {
         console.log("Starting data fetch...");
 
-        // Parse diagnosis and symptoms
+        // Parse diagnosis
         if (diagnosisParam) {
           console.log("Parsing diagnosis param...");
-          const parsedDiagnosis = JSON.parse(decodeURIComponent(diagnosisParam));
-          console.log("Parsed diagnosis:", parsedDiagnosis);
-          setDiagnosis(parsedDiagnosis);
+          try {
+            const parsedDiagnosis = JSON.parse(decodeURIComponent(diagnosisParam));
+            console.log("Parsed diagnosis:", parsedDiagnosis);
+            console.log("Diagnosis keys:", Object.keys(parsedDiagnosis));
+            console.log("Diagnosis name fields:", parsedDiagnosis?.name, parsedDiagnosis?.diagnosis_name, parsedDiagnosis?.diagnosisName);
+            console.log("Confidence fields:", parsedDiagnosis?.confidence, parsedDiagnosis?.confidence_score, parsedDiagnosis?.confidenceScore);
+            setDiagnosis(parsedDiagnosis);
+          } catch (parseError) {
+            console.error("Failed to parse diagnosis JSON:", parseError);
+            // Try using it as plain text
+            setDiagnosis({ name: decodeURIComponent(diagnosisParam) } as any);
+          }
         } else {
           console.warn("No diagnosis parameter found");
         }
 
+        // Parse symptoms
         if (symptomsParam) {
           console.log("Parsing symptoms param...");
-          const parsedSymptoms = JSON.parse(decodeURIComponent(symptomsParam));
-          console.log("Parsed symptoms:", parsedSymptoms);
-          setSymptoms(parsedSymptoms);
+          try {
+            const parsedSymptoms = JSON.parse(decodeURIComponent(symptomsParam));
+            console.log("Parsed symptoms:", parsedSymptoms);
+            setSymptoms(Array.isArray(parsedSymptoms) ? parsedSymptoms : []);
+          } catch (parseError) {
+            console.error("Failed to parse symptoms JSON:", parseError);
+            setSymptoms([]);
+          }
         } else {
           console.warn("No symptoms parameter found");
         }
 
-        // Fetch region
+        // Handle region - could be UUID or name
         if (regionId) {
-          console.log("Fetching region from Supabase...");
-          try {
-            const { data: regionData, error: regionError } = await supabase
-              .from("body_regions")
-              .select("*")
-              .eq("id", regionId)
-              .single();
+          console.log("Processing region:", regionId);
+          
+          // Check if regionId looks like a UUID
+          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(regionId);
+          
+          if (isUUID) {
+            console.log("Region ID is UUID, fetching from Supabase...");
+            try {
+              const { data: regionData, error: regionError } = await supabase
+                .from("body_regions")
+                .select("*")
+                .eq("id", regionId)
+                .single();
 
-            if (regionError) {
-              console.error("Region fetch error:", regionError);
-              console.log("Using region ID as fallback");
-            } else if (regionData) {
-              console.log("Region data fetched:", regionData);
-              setRegion(regionData);
-            } else {
-              console.warn("No region data found");
+              if (regionError) {
+                console.error("Region fetch error:", regionError);
+                setRegionName(regionId);
+              } else if (regionData) {
+                console.log("Region data fetched:", regionData);
+                setRegion(regionData);
+                setRegionName(regionData.displayName || regionData.display_name || regionData.name || regionId);
+              }
+            } catch (e) {
+              console.error("Region fetch failed:", e);
+              setRegionName(regionId);
             }
-          } catch (e) {
-            console.error("Region fetch failed:", e);
-            console.log("Using region ID as fallback");
+          } else {
+            // regionId is a name like "chest", "head", etc.
+            console.log("Region ID is a name, using directly:", regionId);
+            setRegionName(regionId.charAt(0).toUpperCase() + regionId.slice(1));
           }
         } else {
           console.warn("No region ID provided");
+          setRegionName("-");
         }
 
         // Fetch professors (sample data for now)
-        // In production, fetch from professors table
         console.log("Setting up professors list...");
         setProfessors([
           {
@@ -351,20 +391,27 @@ export default function ReportPage() {
               <div className="pl-7 space-y-2">
                 <div>
                   <p className="text-sm text-gray-500">Chief Complaint / Body Region</p>
-                  <p className="text-gray-900">{region?.displayName} - {region?.description}</p>
+                  <p className="text-gray-900">
+                    {region?.displayName || region?.display_name || regionName || '-'}
+                    {region?.description ? ` - ${region.description}` : ''}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Symptoms Reported</p>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {symptoms?.map((s) => (
-                      <Badge
-                        key={s.id}
-                        variant={s.isRedFlag ? "destructive" : "secondary"}
-                      >
-                        {s.name}
-                        {s.isRedFlag && <AlertTriangle className="h-3 w-3 ml-1" />}
-                      </Badge>
-                    ))}
+                    {symptoms && symptoms.length > 0 ? (
+                      symptoms.map((s, index) => (
+                        <Badge
+                          key={s.id || index}
+                          variant={s.isRedFlag || s.is_red_flag ? "destructive" : "secondary"}
+                        >
+                          {s.name}
+                          {(s.isRedFlag || s.is_red_flag) && <AlertTriangle className="h-3 w-3 ml-1" />}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-gray-500 text-sm">No symptoms recorded</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -390,35 +437,38 @@ export default function ReportPage() {
                 Assessment
               </h3>
               <div className="pl-7 space-y-3">
-                {diagnosis && (
+                {diagnosis ? (
                   <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="text-sm text-gray-500 mb-1">Primary Diagnosis</p>
                         <p className="font-semibold text-lg text-emerald-900">
-                          {diagnosis.diagnosis_name}
+                          {getDiagnosisName(diagnosis)}
                         </p>
-                        {diagnosis.diagnosis_code && (
+                        {(diagnosis.diagnosis_code || diagnosis.code) && (
                           <Badge variant="outline" className="mt-1">
-                            ICD-10: {diagnosis.diagnosis_code}
+                            ICD-10: {diagnosis.diagnosis_code || diagnosis.code}
                           </Badge>
                         )}
                       </div>
                       <div className="text-right">
                         <p className="text-2xl font-bold text-emerald-600">
-                          {Math.round(diagnosis.confidence_score * 100)}%
+                          {getConfidencePercent(diagnosis)}%
                         </p>
                         <p className="text-xs text-gray-500">confidence</p>
                       </div>
                     </div>
-                    <p className="text-gray-700 mt-3">{diagnosis.brief_description}</p>
+                    <p className="text-gray-700 mt-3">
+                      {diagnosis.brief_description || diagnosis.briefDescription || diagnosis.description || ''}
+                    </p>
                     
                     {/* Supporting Findings */}
-                    {diagnosis.supporting_findings && diagnosis.supporting_findings.length > 0 && (
+                    {(diagnosis.supporting_findings || diagnosis.supportingFindings) && 
+                     (diagnosis.supporting_findings || diagnosis.supportingFindings).length > 0 && (
                       <div className="mt-4">
                         <p className="text-sm font-medium text-gray-700 mb-2">Supporting Findings:</p>
                         <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                          {diagnosis.supporting_findings?.map((finding, i) => (
+                          {(diagnosis.supporting_findings || diagnosis.supportingFindings)?.map((finding: string, i: number) => (
                             <li key={i}>{finding}</li>
                           ))}
                         </ul>
@@ -426,19 +476,24 @@ export default function ReportPage() {
                     )}
 
                     {/* Red Flags */}
-                    {diagnosis.red_flags && diagnosis.red_flags.length > 0 && (
+                    {(diagnosis.red_flags || diagnosis.redFlags) && 
+                     (diagnosis.red_flags || diagnosis.redFlags).length > 0 && (
                       <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded">
                         <p className="text-sm font-medium text-red-800 flex items-center gap-1 mb-2">
                           <AlertTriangle className="h-4 w-4" />
                           Red Flags to Monitor
                         </p>
                         <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                          {diagnosis.red_flags?.map((flag, i) => (
+                          {(diagnosis.red_flags || diagnosis.redFlags)?.map((flag: string, i: number) => (
                             <li key={i}>{flag}</li>
                           ))}
                         </ul>
                       </div>
                     )}
+                  </div>
+                ) : (
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p className="text-gray-500 text-center">No diagnosis data available</p>
                   </div>
                 )}
               </div>
@@ -539,11 +594,11 @@ export default function ReportPage() {
             <div className="p-4 bg-gray-50 rounded-lg space-y-2">
               <div className="flex justify-between">
                 <span className="text-gray-600">Diagnosis:</span>
-                <span className="font-medium">{diagnosis?.diagnosis_name}</span>
+                <span className="font-medium">{getDiagnosisName(diagnosis)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Confidence:</span>
-                <span className="font-medium">{Math.round((diagnosis?.confidence_score || 0) * 100)}%</span>
+                <span className="font-medium">{getConfidencePercent(diagnosis)}%</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Reviewing Professor:</span>
