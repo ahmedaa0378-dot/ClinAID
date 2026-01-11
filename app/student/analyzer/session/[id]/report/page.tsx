@@ -57,12 +57,12 @@ export default function ReportPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, profile } = useAuth();
-  
+
   const sessionId = params.id as string;
   const regionId = searchParams.get("region");
   const diagnosisParam = searchParams.get("diagnosis");
   const symptomsParam = searchParams.get("symptoms");
-  
+
   const [region, setRegion] = useState<BodyRegion | null>(null);
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
   const [diagnosis, setDiagnosis] = useState<DifferentialDiagnosis | null>(null);
@@ -70,39 +70,67 @@ export default function ReportPage() {
   const [selectedProfessor, setSelectedProfessor] = useState<string>("");
   const [studentNotes, setStudentNotes] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   // Parse data and fetch professors
   useEffect(() => {
+    console.log("Report page mounted");
+    console.log("Session ID:", sessionId);
+    console.log("URL params - region:", regionId, "diagnosis:", diagnosisParam?.substring(0, 50), "symptoms:", symptomsParam?.substring(0, 50));
+
     async function fetchData() {
       setLoading(true);
-      
+      setError("");
+
       try {
+        console.log("Starting data fetch...");
+
         // Parse diagnosis and symptoms
         if (diagnosisParam) {
-          setDiagnosis(JSON.parse(decodeURIComponent(diagnosisParam)));
+          console.log("Parsing diagnosis param...");
+          const parsedDiagnosis = JSON.parse(decodeURIComponent(diagnosisParam));
+          console.log("Parsed diagnosis:", parsedDiagnosis);
+          setDiagnosis(parsedDiagnosis);
+        } else {
+          console.warn("No diagnosis parameter found");
         }
+
         if (symptomsParam) {
-          setSymptoms(JSON.parse(decodeURIComponent(symptomsParam)));
+          console.log("Parsing symptoms param...");
+          const parsedSymptoms = JSON.parse(decodeURIComponent(symptomsParam));
+          console.log("Parsed symptoms:", parsedSymptoms);
+          setSymptoms(parsedSymptoms);
+        } else {
+          console.warn("No symptoms parameter found");
         }
-        
+
         // Fetch region
         if (regionId) {
-          const { data: regionData } = await supabase
+          console.log("Fetching region from Supabase...");
+          const { data: regionData, error: regionError } = await supabase
             .from("body_regions")
             .select("*")
             .eq("id", regionId)
             .single();
-          
-          if (regionData) {
+
+          if (regionError) {
+            console.error("Region fetch error:", regionError);
+          } else if (regionData) {
+            console.log("Region data fetched:", regionData);
             setRegion(regionData);
+          } else {
+            console.warn("No region data found");
           }
+        } else {
+          console.warn("No region ID provided");
         }
-        
+
         // Fetch professors (sample data for now)
         // In production, fetch from professors table
+        console.log("Setting up professors list...");
         setProfessors([
           {
             id: "prof1",
@@ -126,15 +154,19 @@ export default function ReportPage() {
             user: { full_name: "Emily Williams", email: "e.williams@medical.edu" },
           },
         ]);
-      } catch (error) {
-        console.error("Error:", error);
+
+        console.log("Data fetch completed successfully");
+      } catch (err: any) {
+        console.error("Error loading report data:", err);
+        setError(err.message || "Failed to load report data. Please try again.");
       } finally {
+        console.log("Setting loading to false");
         setLoading(false);
       }
     }
-    
+
     fetchData();
-  }, [regionId, diagnosisParam, symptomsParam]);
+  }, [regionId, diagnosisParam, symptomsParam, sessionId]);
 
   // Handle submission
   const handleSubmit = async () => {
@@ -177,6 +209,34 @@ export default function ReportPage() {
           <Loader2 className="h-8 w-8 animate-spin text-emerald-600 mx-auto" />
           <p className="mt-2 text-gray-600">Generating clinical report...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="py-12 text-center">
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertTriangle className="h-10 w-10 text-red-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Report</h2>
+            <p className="text-gray-600 mb-6">{error}</p>
+            <div className="flex justify-center gap-4">
+              <Button variant="outline" onClick={() => router.back()}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Go Back
+              </Button>
+              <Button
+                onClick={() => window.location.reload()}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                Try Again
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -258,7 +318,7 @@ export default function ReportPage() {
           <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
             <div>
               <p className="text-sm text-gray-500">Student</p>
-              <p className="font-medium">{profile?.full_name || "Student Name"}</p>
+              <p className="font-medium">{profile?.full_name || "Medical Student"}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Level</p>
