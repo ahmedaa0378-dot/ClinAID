@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard,
   BookOpen,
   Users,
+  FileText,
   ClipboardList,
   Calendar,
   BarChart3,
@@ -15,10 +17,12 @@ import {
   Menu,
   X,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/professor", icon: LayoutDashboard },
+  { name: "Submissions", href: "/professor/submissions", icon: FileText },
   { name: "My Courses", href: "/professor/courses", icon: BookOpen },
   { name: "Students", href: "/professor/students", icon: Users },
   { name: "Assessments", href: "/professor/assessments", icon: ClipboardList },
@@ -29,7 +33,28 @@ const navigation = [
 
 export default function ProfessorLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { profile, user, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  // Get user initials
+  const getInitials = () => {
+    if (profile?.full_name) {
+      const names = profile.full_name.split(" ");
+      if (names.length >= 2) {
+        return `${names[0][0]}${names[1][0]}`.toUpperCase();
+      }
+      return names[0].substring(0, 2).toUpperCase();
+    }
+    return "DP";
+  };
+
+  // Handle logout
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    await signOut();
+  };
 
   const NavContent = () => (
     <>
@@ -70,16 +95,26 @@ export default function ProfessorLayout({ children }: { children: React.ReactNod
       {/* User & Logout */}
       <div className="p-4 border-t border-gray-800">
         <div className="flex items-center gap-3 px-4 py-3 mb-2">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center justify-center text-white font-semibold">DP</div>
+          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center justify-center text-white font-semibold">
+            {getInitials()}
+          </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white font-medium truncate">Dr. Professor</p>
-            <p className="text-gray-500 text-sm truncate">prof@university.edu</p>
+            <p className="text-white font-medium truncate">{profile?.full_name || "Professor"}</p>
+            <p className="text-gray-500 text-sm truncate">{user?.email || "prof@university.edu"}</p>
           </div>
         </div>
-        <Link href="/login" className="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors">
-          <LogOut className="h-5 w-5" />
-          <span className="font-medium">Sign Out</span>
-        </Link>
+        <button
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="w-full flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
+        >
+          {loggingOut ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <LogOut className="h-5 w-5" />
+          )}
+          <span className="font-medium">{loggingOut ? "Signing out..." : "Sign Out"}</span>
+        </button>
       </div>
     </>
   );
