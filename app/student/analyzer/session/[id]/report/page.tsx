@@ -81,6 +81,7 @@ export default function ReportPage() {
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string>("");
   const [regionName, setRegionName] = useState<string>("-");
   
   // AI Report states
@@ -186,30 +187,54 @@ export default function ReportPage() {
           }
         }
 
-        // Set sample professors
-        setProfessors([
-          {
-            id: "prof1",
-            user_id: "user1",
-            specialty: "Internal Medicine",
-            title: "Dr.",
-            user: { full_name: "Sarah Johnson", email: "s.johnson@medical.edu" },
-          },
-          {
-            id: "prof2",
-            user_id: "user2",
-            specialty: "Neurology",
-            title: "Dr.",
-            user: { full_name: "Michael Chen", email: "m.chen@medical.edu" },
-          },
-          {
-            id: "prof3",
-            user_id: "user3",
-            specialty: "Emergency Medicine",
-            title: "Dr.",
-            user: { full_name: "Emily Williams", email: "e.williams@medical.edu" },
-          },
-        ]);
+        // Fetch real professors from database
+        try {
+          const { data: professorsData, error: profError } = await supabase
+            .from("users")
+            .select("id, full_name, email")
+            .eq("role", "professor")
+            .eq("status", "approved");
+
+          if (!profError && professorsData && professorsData.length > 0) {
+            setProfessors(professorsData.map(p => ({
+              id: p.id,
+              user_id: p.id,
+              specialty: "Medical Education",
+              title: "Dr.",
+              user: { full_name: p.full_name, email: p.email }
+            })));
+          } else {
+            // Fallback to sample professors if none in database
+            setProfessors([
+              {
+                id: "prof1",
+                user_id: "prof1",
+                specialty: "Internal Medicine",
+                title: "Dr.",
+                user: { full_name: "Sarah Johnson", email: "s.johnson@medical.edu" },
+              },
+              {
+                id: "prof2",
+                user_id: "prof2",
+                specialty: "Neurology",
+                title: "Dr.",
+                user: { full_name: "Michael Chen", email: "m.chen@medical.edu" },
+              },
+            ]);
+          }
+        } catch (e) {
+          console.error("Error fetching professors:", e);
+          // Use fallback professors
+          setProfessors([
+            {
+              id: "prof1",
+              user_id: "prof1",
+              specialty: "Internal Medicine",
+              title: "Dr.",
+              user: { full_name: "Sarah Johnson", email: "s.johnson@medical.edu" },
+            },
+          ]);
+        }
 
       } catch (err: any) {
         setError(err.message || "Failed to load report data");
@@ -228,17 +253,89 @@ export default function ReportPage() {
     }
   }, [loading, diagnosis]);
 
-  // Handle submission
+  // Handle submission - SAVES TO DATABASE
   const handleSubmit = async () => {
     if (!selectedProfessor || !diagnosis) return;
     
     setSubmitting(true);
+    setSubmitError("");
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Get current user ID (use profile.id or a fallback for dev mode)
+      const studentId = profile?.id || user?.id || "dev-student-id";
+      
+      // 1. Create clinical_reports record first
+      const reportData = {
+        session_id: sessionId,
+        report_title: `${getDiagnosisName(diagnosis)} - Clinical Analysis`,
+        subjective: {
+          chief_complaint: regionName,
+          symptoms: symptoms.map(s => s.name),
+          red_flags: symptoms.filter(s => s.isRedFlag || s.is_red_flag).map(s => s.name),
+        },
+        objective: {
+          note: "Physical examination findings would be documented here based on actual patient encounter."
+        },
+        assessment: {
+          primary_diagnosis: getDiagnosisName(diagnosis),
+          confidence: getConfidencePercent(diagnosis),
+          supporting_findings: diagnosis?.supporting_findings || diagnosis?.supportingFindings || [],
+          red_flags: diagnosis?.red_flags || diagnosis?.redFlags || [],
+        },
+        plan: {
+          note: "Treatment plan and follow-up recommendations would be documented here."
+        },
+        content_json: {
+          diagnosis,
+          symptoms,
+          region: regionName,
+          sessionId,
+        },
+        content_markdown: aiReport || "",
+        executive_summary: `Clinical analysis for ${getDiagnosisName(diagnosis)} with ${getConfidencePercent(diagnosis)}% confidence.`,
+        key_findings: symptoms.map(s => s.name),
+        recommendations: [],
+        generated_by: "student",
+        ai_model_used: "gpt-4o",
+        word_count: aiReport ? aiReport.split(/\s+/).length : 0,
+      };
+
+      const { data: reportResult, error: reportError } = await supabase
+        .from("clinical_reports")
+        .insert(reportData)
+        .select("id")
+        .single();
+
+      if (reportError) {
+        console.error("Error creating report:", reportError);
+        throw new Error(`Failed to save report: ${reportError.message}`);
+      }
+
+      // 2. Create submissions record
+      const submissionData = {
+        report_id: reportResult.id,
+        student_id: studentId,
+        professor_id: selectedProfessor,
+        status: "pending",
+        student_notes: studentNotes || null,
+        submitted_at: new Date().toISOString(),
+      };
+
+      const { error: submissionError } = await supabase
+        .from("submissions")
+        .insert(submissionData);
+
+      if (submissionError) {
+        console.error("Error creating submission:", submissionError);
+        throw new Error(`Failed to create submission: ${submissionError.message}`);
+      }
+
+      console.log("Report submitted successfully!");
       setSubmitSuccess(true);
-    } catch (error) {
-      console.error("Error submitting:", error);
+      
+    } catch (error: any) {
+      console.error("Submission error:", error);
+      setSubmitError(error.message || "Failed to submit report. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -296,13 +393,14 @@ export default function ReportPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Report Submitted Successfully!</h2>
             <p className="text-gray-600 mb-6">
               Your clinical report has been sent to {professors.find(p => p.id === selectedProfessor)?.user.full_name} for review.
+              You'll receive feedback once they've evaluated your diagnosis.
             </p>
             <div className="flex justify-center gap-4">
               <Button variant="outline" onClick={() => router.push("/student/analyzer")}>
                 Start New Analysis
               </Button>
-              <Button onClick={() => router.push("/student/submissions")} className="bg-emerald-600 hover:bg-emerald-700">
-                View My Submissions
+              <Button onClick={() => router.push("/student")} className="bg-emerald-600 hover:bg-emerald-700">
+                Back to Dashboard
               </Button>
             </div>
           </CardContent>
@@ -518,6 +616,18 @@ export default function ReportPage() {
           </Select>
         </CardContent>
       </Card>
+
+      {/* Submit Error */}
+      {submitError && (
+        <Card className="mb-6 border-red-200 bg-red-50">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertTriangle className="h-5 w-5" />
+              <p>{submitError}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Action Buttons */}
       <div className="flex items-center justify-between mb-8">
