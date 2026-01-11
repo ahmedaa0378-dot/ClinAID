@@ -25,6 +25,11 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // TODO: Re-enable auth - Temporarily bypassing authentication for development
+    window.location.href = '/student';
+
+    /* ORIGINAL AUTH CODE - COMMENTED OUT FOR DEVELOPMENT
     setError("");
 
     if (!email || !password) {
@@ -55,7 +60,7 @@ export default function LoginPage() {
       // Fetch user profile to determine redirect
       const { supabase } = await import("@/lib/supabase");
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       console.log("Auth user:", user);
 
       if (user) {
@@ -68,13 +73,13 @@ export default function LoginPage() {
         console.log("Profile:", profile, "Error:", profileError);
 
         if (profile) {
-          const redirectPath = 
+          const redirectPath =
             profile.role === "student" ? "/student" :
             profile.role === "professor" ? "/professor" :
             profile.role === "college_admin" ? "/admin" :
             profile.role === "super_admin" ? "/super-admin" :
             "/student";
-          
+
           console.log("Redirecting to:", redirectPath);
 window.location.href = redirectPath;
         } else {
@@ -90,6 +95,7 @@ window.location.href = redirectPath;
       setError("An unexpected error occurred. Please try again.");
       setIsLoading(false);
     }
+    */
   };
 
   return (

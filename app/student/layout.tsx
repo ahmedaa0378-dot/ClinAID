@@ -40,6 +40,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
   // Get user initials
   const getInitials = () => {
+    // TODO: Re-enable auth - Using mock data during development
     if (profile?.full_name) {
       const names = profile.full_name.split(" ");
       if (names.length >= 2) {
@@ -56,6 +57,8 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
     await signOut();
   };
 
+  // TODO: Re-enable auth - Temporarily bypassing authentication for development
+  /* ORIGINAL AUTH CHECKS - COMMENTED OUT FOR DEVELOPMENT
   // Show loading while checking auth
   if (loading) {
     return (
@@ -73,6 +76,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
     router.push("/login");
     return null;
   }
+  */
 
   const NavContent = () => (
     <>
@@ -118,7 +122,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-white font-medium truncate">{profile?.full_name || "Student"}</p>
-            <p className="text-gray-500 text-sm truncate">{user?.email}</p>
+            <p className="text-gray-500 text-sm truncate">{user?.email || "dev@test.com"}</p>
           </div>
         </div>
         <button 
