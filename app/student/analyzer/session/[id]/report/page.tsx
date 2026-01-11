@@ -110,19 +110,25 @@ export default function ReportPage() {
         // Fetch region
         if (regionId) {
           console.log("Fetching region from Supabase...");
-          const { data: regionData, error: regionError } = await supabase
-            .from("body_regions")
-            .select("*")
-            .eq("id", regionId)
-            .single();
+          try {
+            const { data: regionData, error: regionError } = await supabase
+              .from("body_regions")
+              .select("*")
+              .eq("id", regionId)
+              .single();
 
-          if (regionError) {
-            console.error("Region fetch error:", regionError);
-          } else if (regionData) {
-            console.log("Region data fetched:", regionData);
-            setRegion(regionData);
-          } else {
-            console.warn("No region data found");
+            if (regionError) {
+              console.error("Region fetch error:", regionError);
+              console.log("Using region ID as fallback");
+            } else if (regionData) {
+              console.log("Region data fetched:", regionData);
+              setRegion(regionData);
+            } else {
+              console.warn("No region data found");
+            }
+          } catch (e) {
+            console.error("Region fetch failed:", e);
+            console.log("Using region ID as fallback");
           }
         } else {
           console.warn("No region ID provided");
@@ -350,7 +356,7 @@ export default function ReportPage() {
                 <div>
                   <p className="text-sm text-gray-500">Symptoms Reported</p>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {symptoms.map((s) => (
+                    {symptoms?.map((s) => (
                       <Badge
                         key={s.id}
                         variant={s.isRedFlag ? "destructive" : "secondary"}
@@ -408,14 +414,16 @@ export default function ReportPage() {
                     <p className="text-gray-700 mt-3">{diagnosis.brief_description}</p>
                     
                     {/* Supporting Findings */}
-                    <div className="mt-4">
-                      <p className="text-sm font-medium text-gray-700 mb-2">Supporting Findings:</p>
-                      <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                        {diagnosis.supporting_findings.map((finding, i) => (
-                          <li key={i}>{finding}</li>
-                        ))}
-                      </ul>
-                    </div>
+                    {diagnosis.supporting_findings && diagnosis.supporting_findings.length > 0 && (
+                      <div className="mt-4">
+                        <p className="text-sm font-medium text-gray-700 mb-2">Supporting Findings:</p>
+                        <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+                          {diagnosis.supporting_findings?.map((finding, i) => (
+                            <li key={i}>{finding}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
 
                     {/* Red Flags */}
                     {diagnosis.red_flags && diagnosis.red_flags.length > 0 && (
@@ -425,7 +433,7 @@ export default function ReportPage() {
                           Red Flags to Monitor
                         </p>
                         <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                          {diagnosis.red_flags.map((flag, i) => (
+                          {diagnosis.red_flags?.map((flag, i) => (
                             <li key={i}>{flag}</li>
                           ))}
                         </ul>
@@ -484,7 +492,7 @@ export default function ReportPage() {
               <SelectValue placeholder="Select a professor..." />
             </SelectTrigger>
             <SelectContent>
-              {professors.map((prof) => (
+              {professors?.map((prof) => (
                 <SelectItem key={prof.id} value={prof.id}>
                   <div className="flex items-center gap-2">
                     <User className="h-4 w-4 text-gray-500" />
