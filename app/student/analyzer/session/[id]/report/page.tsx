@@ -262,11 +262,46 @@ export default function ReportPage() {
     
     try {
       // Get current user ID (use profile.id or a fallback for dev mode)
-      const studentId = profile?.id || user?.id || "dev-student-id";
+      const studentId = profile?.id || user?.id || "a4c24c6b-6cce-45e5-9640-cfdd5308c0c9";
       
-      // 1. Create clinical_reports record first
+      // 1. First, check if session exists, if not create it
+      const { data: existingSession } = await supabase
+        .from("analysis_sessions")
+        .select("id")
+        .eq("id", sessionId)
+        .single();
+      
+      let finalSessionId = sessionId;
+      
+      if (!existingSession) {
+        // Create the session first
+        const { data: newSession, error: sessionError } = await supabase
+          .from("analysis_sessions")
+          .insert({
+            id: sessionId,
+            student_id: studentId,
+            student_level: "MS3", // MS3, MS4, R1, R2, R3
+            status: "completed",
+            initial_complaint: regionName,
+            started_at: new Date().toISOString(),
+            completed_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
+
+        if (sessionError) {
+          console.error("Error creating session:", sessionError);
+          throw new Error(`Failed to create session: ${sessionError.message}`);
+        }
+        
+        if (newSession) {
+          finalSessionId = newSession.id;
+        }
+      }
+
+      // 2. Create clinical_reports record
       const reportData = {
-        session_id: sessionId,
+        session_id: finalSessionId,
         report_title: `${getDiagnosisName(diagnosis)} - Clinical Analysis`,
         subjective: {
           chief_complaint: regionName,
@@ -289,7 +324,7 @@ export default function ReportPage() {
           diagnosis,
           symptoms,
           region: regionName,
-          sessionId,
+          sessionId: finalSessionId,
         },
         content_markdown: aiReport || "",
         executive_summary: `Clinical analysis for ${getDiagnosisName(diagnosis)} with ${getConfidencePercent(diagnosis)}% confidence.`,
@@ -311,7 +346,7 @@ export default function ReportPage() {
         throw new Error(`Failed to save report: ${reportError.message}`);
       }
 
-      // 2. Create submissions record
+      // 3. Create submissions record
       const submissionData = {
         report_id: reportResult.id,
         student_id: studentId,
@@ -332,13 +367,52 @@ export default function ReportPage() {
 
       console.log("Report submitted successfully!");
       setSubmitSuccess(true);
+      setShowSubmitDialog(false);
       
     } catch (error: any) {
       console.error("Submission error:", error);
       setSubmitError(error.message || "Failed to submit report. Please try again.");
+      setShowSubmitDialog(false);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Handle PDF Download
+  const handleDownloadPDF = () => {
+    // For now, create a simple text download
+    // In production, use a PDF library like jsPDF or html2pdf
+    const content = `
+CLINICAL REPORT
+===============
+
+Patient Region: ${regionName}
+Date: ${new Date().toLocaleDateString()}
+Student: ${profile?.full_name || "Medical Student"}
+
+SYMPTOMS REPORTED:
+${symptoms.map(s => `- ${s.name}${s.isRedFlag || s.is_red_flag ? ' (RED FLAG)' : ''}`).join('\n')}
+
+PRIMARY DIAGNOSIS:
+${getDiagnosisName(diagnosis)}
+Confidence: ${getConfidencePercent(diagnosis)}%
+
+CLINICAL ANALYSIS:
+${aiReport || 'No AI report generated.'}
+
+STUDENT NOTES:
+${studentNotes || 'None'}
+    `;
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `clinical-report-${sessionId.slice(0, 8)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const formatDate = (date: Date) => {
@@ -631,8 +705,8 @@ export default function ReportPage() {
 
       {/* Action Buttons */}
       <div className="flex items-center justify-between mb-8">
-        <Button variant="outline">
-          <Download className="h-4 w-4 mr-2" /> Download PDF
+        <Button variant="outline" onClick={handleDownloadPDF}>
+          <Download className="h-4 w-4 mr-2" /> Download Report
         </Button>
         
         <Button
