@@ -188,53 +188,40 @@ export default function ReportPage() {
         }
 
         // Fetch real professors from database
-        try {
-          const { data: professorsData, error: profError } = await supabase
-            .from("users")
-            .select("id, full_name, email")
-            .eq("role", "professor")
-            .eq("status", "approved");
+try {
+  const { data: professorsData, error: profError } = await supabase
+    .from("professors")
+    .select(`
+      id,
+      specialty,
+      title,
+      user:users!professors_user_id_fkey (
+        id,
+        full_name,
+        email
+      )
+    `)
+    .eq("is_accepting_reviews", true);
 
-          if (!profError && professorsData && professorsData.length > 0) {
-            setProfessors(professorsData.map(p => ({
-              id: p.id,
-              user_id: p.id,
-              specialty: "Medical Education",
-              title: "Dr.",
-              user: { full_name: p.full_name, email: p.email }
-            })));
-          } else {
-            // Fallback to sample professors if none in database
-            setProfessors([
-              {
-                id: "prof1",
-                user_id: "prof1",
-                specialty: "Internal Medicine",
-                title: "Dr.",
-                user: { full_name: "Sarah Johnson", email: "s.johnson@medical.edu" },
-              },
-              {
-                id: "prof2",
-                user_id: "prof2",
-                specialty: "Neurology",
-                title: "Dr.",
-                user: { full_name: "Michael Chen", email: "m.chen@medical.edu" },
-              },
-            ]);
-          }
-        } catch (e) {
-          console.error("Error fetching professors:", e);
-          // Use fallback professors
-          setProfessors([
-            {
-              id: "prof1",
-              user_id: "prof1",
-              specialty: "Internal Medicine",
-              title: "Dr.",
-              user: { full_name: "Sarah Johnson", email: "s.johnson@medical.edu" },
-            },
-          ]);
-        }
+  if (!profError && professorsData && professorsData.length > 0) {
+    setProfessors(professorsData.map(p => ({
+      id: p.id,
+      user_id: (p.user as any)?.id || p.id,
+      specialty: p.specialty || "Medical Education",
+      title: p.title || "Dr.",
+      user: { 
+        full_name: (p.user as any)?.full_name || "Professor", 
+        email: (p.user as any)?.email || "" 
+      }
+    })));
+  } else {
+    console.log("No professors found or error:", profError);
+    setProfessors([]);
+  }
+} catch (e) {
+  console.error("Error fetching professors:", e);
+  setProfessors([]);
+}
 
       } catch (err: any) {
         setError(err.message || "Failed to load report data");
