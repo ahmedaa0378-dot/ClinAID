@@ -7,6 +7,8 @@ import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard,
   BookOpen,
+  Library,
+  Sparkles,
   Brain,
   Stethoscope,
   ClipboardList,
