@@ -286,53 +286,6 @@ try {
         }
       }
 
-      // 2. Create clinical_reports record
-      const reportData = {
-        session_id: finalSessionId,
-        report_title: `${getDiagnosisName(diagnosis)} - Clinical Analysis`,
-        subjective: {
-          chief_complaint: regionName,
-          symptoms: symptoms.map(s => s.name),
-          red_flags: symptoms.filter(s => s.isRedFlag || s.is_red_flag).map(s => s.name),
-        },
-        objective: {
-          note: "Physical examination findings would be documented here based on actual patient encounter."
-        },
-        assessment: {
-          primary_diagnosis: getDiagnosisName(diagnosis),
-          confidence: getConfidencePercent(diagnosis),
-          supporting_findings: diagnosis?.supporting_findings || diagnosis?.supportingFindings || [],
-          red_flags: diagnosis?.red_flags || diagnosis?.redFlags || [],
-        },
-        plan: {
-          note: "Treatment plan and follow-up recommendations would be documented here."
-        },
-        content_json: {
-          diagnosis,
-          symptoms,
-          region: regionName,
-          sessionId: finalSessionId,
-        },
-        content_markdown: aiReport || "",
-        executive_summary: `Clinical analysis for ${getDiagnosisName(diagnosis)} with ${getConfidencePercent(diagnosis)}% confidence.`,
-        key_findings: symptoms.map(s => s.name),
-        recommendations: [],
-        generated_by: "student",
-        ai_model_used: "gpt-4o",
-        word_count: aiReport ? aiReport.split(/\s+/).length : 0,
-      };
-
-      const { data: reportResult, error: reportError } = await supabase
-        .from("clinical_reports")
-        .insert(reportData)
-        .select("id")
-        .single();
-
-      if (reportError) {
-        console.error("Error creating report:", reportError);
-        throw new Error(`Failed to save report: ${reportError.message}`);
-      }
-
       // 3. Create submissions record
       const submissionData = {
         report_id: reportResult.id,
