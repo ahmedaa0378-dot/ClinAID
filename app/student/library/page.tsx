@@ -339,7 +339,7 @@ export default function StudentLibraryPage() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-green-600">
-              {[...new Set(libraryItems.map((i) => i.specialty))].length}
+              {Array.from(new Set(libraryItems.map((i) => i.specialty))).length}
             </p>
             <p className="text-sm text-gray-500">Specialties</p>
           </CardContent>
