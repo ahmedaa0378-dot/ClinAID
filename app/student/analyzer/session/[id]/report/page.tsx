@@ -293,7 +293,7 @@ try {
         subjective: {
           chief_complaint: regionName,
           symptoms: symptoms.map(s => s.name),
-          red_flags: symptoms.filter(s => s.isRedFlag || s.is_red_flag).map(s => s.name),
+          red_flags: symptoms.filter(s => s.isRedFlag).map(s => s.name),
         },
         objective: {
           note: "Physical examination findings would be documented here based on actual patient encounter."
