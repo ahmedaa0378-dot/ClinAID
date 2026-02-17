@@ -378,7 +378,7 @@ Date: ${new Date().toLocaleDateString()}
 Student: ${profile?.full_name || "Medical Student"}
 
 SYMPTOMS REPORTED:
-${symptoms.map(s => `- ${s.name}${s.isRedFlag || s.is_red_flag ? ' (RED FLAG)' : ''}`).join('\n')}
+${symptoms.map(s => `- ${s.name}${s.isRedFlag ? ' (RED FLAG)' : ''}`).join('\n')}
 
 PRIMARY DIAGNOSIS:
 ${getDiagnosisName(diagnosis)}
@@ -531,9 +531,9 @@ ${studentNotes || 'None'}
                 <div className="flex flex-wrap gap-2">
                   {symptoms && symptoms.length > 0 ? (
                     symptoms.map((s, index) => (
-                      <Badge key={s.id || index} variant={s.isRedFlag || s.is_red_flag ? "destructive" : "secondary"}>
+                      <Badge key={s.id || index} variant={s.isRedFlag ? "destructive" : "secondary"}>
                         {s.name}
-                        {(s.isRedFlag || s.is_red_flag) && <AlertTriangle className="h-3 w-3 ml-1" />}
+                        {(s.isRedFlag) && <AlertTriangle className="h-3 w-3 ml-1" />}
                       </Badge>
                     ))
                   ) : (
