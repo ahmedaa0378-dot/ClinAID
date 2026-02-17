@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/lib/supabase";
 import {
   Mail,
   Lock,
@@ -12,25 +11,21 @@ import {
   ArrowRight,
   Loader2,
   AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [loginSuccess, setLoginSuccess] = useState<{ name: string; path: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // TODO: Re-enable auth - Temporarily bypassing authentication for development
-    window.location.href = '/student';
-
-    /* ORIGINAL AUTH CODE - COMMENTED OUT FOR DEVELOPMENT
     setError("");
+    setLoginSuccess(null);
 
     if (!email || !password) {
       setError("Please fill in all fields");
@@ -38,65 +33,156 @@ export default function LoginPage() {
     }
 
     setIsLoading(true);
+    console.log("1. Starting login for:", email);
 
     try {
-      const { error: signInError } = await signIn(email, password);
+      // Sign in with Supabase Auth
+      console.log("2. Calling supabase.auth.signInWithPassword...");
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      if (signInError) {
-        if (signInError.message.includes("Invalid login credentials")) {
+      console.log("3. Auth response:", { 
+        userId: authData?.user?.id, 
+        error: authError?.message 
+      });
+
+      if (authError) {
+        console.log("4. Auth error:", authError.message);
+        if (authError.message.includes("Invalid login credentials")) {
           setError("Invalid email or password");
-        } else if (signInError.message.includes("Email not confirmed")) {
+        } else if (authError.message.includes("Email not confirmed")) {
           setError("Please verify your email before logging in");
         } else {
-          setError(signInError.message);
+          setError(authError.message);
         }
         setIsLoading(false);
         return;
       }
 
-      // Small delay to let auth state update
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Fetch user profile to determine redirect
-      const { supabase } = await import("@/lib/supabase");
-      const { data: { user } } = await supabase.auth.getUser();
-
-      console.log("Auth user:", user);
-
-      if (user) {
-        const { data: profile, error: profileError } = await supabase
-          .from("users")
-          .select("role")
-          .eq("id", user.id)
-          .single();
-
-        console.log("Profile:", profile, "Error:", profileError);
-
-        if (profile) {
-          const redirectPath =
-            profile.role === "student" ? "/student" :
-            profile.role === "professor" ? "/professor" :
-            profile.role === "college_admin" ? "/admin" :
-            profile.role === "super_admin" ? "/super-admin" :
-            "/student";
-
-          console.log("Redirecting to:", redirectPath);
-window.location.href = redirectPath;
-        } else {
-          console.log("No profile found, redirecting to /student");
-          window.location.href = "/student";
-        }
-      } else {
+      if (!authData.user) {
+        console.log("4. No user in auth response");
         setError("Authentication failed. Please try again.");
         setIsLoading(false);
+        return;
       }
+
+      console.log("4. Auth successful, user ID:", authData.user.id);
+
+      // Check if user exists in our users table
+      console.log("5. Fetching user from database...");
+      let { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", authData.user.id)
+        .single();
+
+      console.log("6. User fetch result:", { 
+        found: !!userData, 
+        role: userData?.role,
+        error: userError?.message 
+      });
+
+      // If user doesn't exist in our table, create them
+      if (userError || !userData) {
+        console.log("7. Creating new user profile...");
+        const role = email.toLowerCase().includes("professor") ? "professor" : "student";
+        
+        const { data: newUser, error: createError } = await supabase
+          .from("users")
+          .insert({
+            id: authData.user.id,
+            email: authData.user.email,
+            full_name: role === "professor" ? "Dr. Ahmed Khan" : "John Smith",
+            role: role,
+            status: "approved",
+          })
+          .select()
+          .single();
+
+        console.log("8. User creation result:", { 
+          created: !!newUser, 
+          error: createError?.message 
+        });
+
+        if (createError) {
+          setError("Failed to create user profile: " + createError.message);
+          setIsLoading(false);
+          return;
+        }
+
+        userData = newUser;
+
+        // If professor, also create professor record
+        if (role === "professor") {
+          console.log("9. Creating professor record...");
+          await supabase.from("professors").insert({
+            user_id: authData.user.id,
+            specialty: "Internal Medicine",
+            title: "Dr.",
+            is_accepting_reviews: true,
+          });
+        }
+      }
+
+      // Determine redirect path based on role
+      const redirectPath =
+        userData.role === "professor" ? "/professor" :
+        userData.role === "student" ? "/student" :
+        userData.role === "college_admin" ? "/admin" :
+        userData.role === "super_admin" ? "/super-admin" :
+        "/student";
+
+      console.log("10. Login complete! Role:", userData.role, "Path:", redirectPath);
+
+      // Set success state with redirect info
+      setLoginSuccess({
+        name: userData.full_name || "User",
+        path: redirectPath,
+      });
+      
+      setIsLoading(false);
+      console.log("11. Success state set, showing welcome screen");
+
     } catch (err: any) {
-      console.error("Login error:", err);
-      setError("An unexpected error occurred. Please try again.");
+      console.error("CATCH ERROR:", err);
+      setError("An unexpected error occurred: " + (err.message || "Unknown error"));
       setIsLoading(false);
     }
-    */
   };
+
+  const quickLogin = (userEmail: string, userPassword: string) => {
+    setEmail(userEmail);
+    setPassword(userPassword);
+    setLoginSuccess(null);
+    setError("");
+  };
+
+  // Show success screen with link after successful login
+  if (loginSuccess) {
+    return (
+      <div className="text-center">
+        <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+          <CheckCircle2 className="h-10 w-10 text-green-500" />
+        </div>
+        <h1 className="text-2xl font-bold text-white mb-2">Welcome back!</h1>
+        <p className="text-gray-400 mb-8">{loginSuccess.name}</p>
+        
+        <Link
+          href={loginSuccess.path}
+          className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-emerald-500 to-cyan-500 text-white rounded-xl font-semibold hover:opacity-90 transition-opacity"
+        >
+          Go to Dashboard
+          <ArrowRight className="h-5 w-5" />
+        </Link>
+
+        <p className="text-gray-500 text-sm mt-6">
+          Click the button above to continue
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -128,7 +214,8 @@ window.location.href = redirectPath;
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@institution.edu"
-              className="w-full pl-12 pr-4 py-3.5 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+              disabled={isLoading}
+              className="w-full pl-12 pr-4 py-3.5 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors disabled:opacity-50"
             />
           </div>
         </div>
@@ -153,18 +240,15 @@ window.location.href = redirectPath;
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter your password"
-              className="w-full pl-12 pr-12 py-3.5 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+              disabled={isLoading}
+              className="w-full pl-12 pr-12 py-3.5 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors disabled:opacity-50"
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
               className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
             >
-              {showPassword ? (
-                <EyeOff className="h-5 w-5" />
-              ) : (
-                <Eye className="h-5 w-5" />
-              )}
+              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </div>
         </div>
@@ -195,12 +279,34 @@ window.location.href = redirectPath;
           <div className="w-full border-t border-gray-800" />
         </div>
         <div className="relative flex justify-center text-sm">
-          <span className="px-4 bg-gray-950 text-gray-500">or</span>
+          <span className="px-4 bg-gray-950 text-gray-500">Quick Login</span>
         </div>
       </div>
 
+      {/* Test Credentials - Clickable */}
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => quickLogin("professor@clinaid.test", "Professor123!")}
+          disabled={isLoading}
+          className="w-full p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-left hover:bg-blue-500/20 transition-colors disabled:opacity-50"
+        >
+          <p className="text-blue-400 font-medium text-sm mb-1">👨‍⚕️ Professor</p>
+          <p className="text-gray-400 text-xs">professor@clinaid.test</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => quickLogin("student@clinaid.test", "Student123!")}
+          disabled={isLoading}
+          className="w-full p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-left hover:bg-green-500/20 transition-colors disabled:opacity-50"
+        >
+          <p className="text-green-400 font-medium text-sm mb-1">👨‍🎓 Student</p>
+          <p className="text-gray-400 text-xs">student@clinaid.test</p>
+        </button>
+      </div>
+
       {/* Sign Up Link */}
-      <p className="text-center text-gray-400">
+      <p className="text-center text-gray-400 mt-8">
         Don't have an account?{" "}
         <Link
           href="/register"
