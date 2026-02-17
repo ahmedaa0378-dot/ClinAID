@@ -5,21 +5,19 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
   Search,
-  Filter,
   BookOpen,
   Clock,
   Star,
   Loader2,
-  Plus,
   Sparkles,
   GraduationCap,
-  ChevronDown,
   Check,
-  X,
   Eye,
-  BookmarkPlus,
+  FileText,
+  Download,
+  ExternalLink,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -51,35 +49,24 @@ interface LibraryItem {
   estimated_duration_weeks: number;
   is_featured: boolean;
   download_count: number;
-}
-
-interface PublicCourse {
-  id: string;
-  title: string;
-  code: string;
-  description: string;
-  image: string;
-  duration_weeks: number;
-  total_lessons: number;
-  difficulty: string;
-  specialty: string;
-  target_year: string;
-  objectives: string[];
-  modules: any[];
+  pdf_name: string;
+  pdf_storage_path: string;
 }
 
 const SPECIALTIES = [
   "All Specialties",
   "Cardiology",
+  "Nephrology",
+  "Pulmonology",
+  "Endocrinology",
+  "Pharmacology",
+  "Critical Care",
   "Neurology",
   "Pediatrics",
   "Emergency Medicine",
   "Internal Medicine",
-  "Pharmacology",
   "Surgery",
   "Infectious Disease",
-  "Oncology",
-  "Psychiatry",
 ];
 
 const DIFFICULTIES = [
@@ -101,10 +88,8 @@ export default function StudentLibraryPage() {
   const router = useRouter();
 
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
-  const [publicCourses, setPublicCourses] = useState<PublicCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [studentId, setStudentId] = useState<string | null>(null);
-  const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>([]);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -116,7 +101,7 @@ export default function StudentLibraryPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewItem, setPreviewItem] = useState<LibraryItem | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [enrolling, setEnrolling] = useState(false);
+  const [generationError, setGenerationError] = useState("");
 
   useEffect(() => {
     fetchData();
@@ -147,38 +132,23 @@ export default function StudentLibraryPage() {
         .order("is_featured", { ascending: false })
         .order("download_count", { ascending: false });
 
-      if (!libError && libData) {
-        setLibraryItems(libData);
-      }
-
-      // Fetch public courses
-      const { data: coursesData, error: coursesError } = await supabase
-        .from("courses")
-        .select("*")
-        .eq("is_public", true)
-        .eq("status", "active")
-        .order("created_at", { ascending: false });
-
-      if (!coursesError && coursesData) {
-        setPublicCourses(coursesData);
-      }
-
-      // Fetch enrolled course IDs
-      if (sId) {
-        const { data: enrollments } = await supabase
-          .from("course_enrollments")
-          .select("course_id")
-          .eq("student_id", sId);
-
-        if (enrollments) {
-          setEnrolledCourseIds(enrollments.map((e) => e.course_id));
-        }
+      if (libError) {
+        console.error("Library fetch error:", libError);
+      } else {
+        setLibraryItems(libData || []);
       }
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Get PDF URL from storage
+  const getPdfUrl = (pdfPath: string) => {
+    if (!pdfPath) return null;
+    const { data } = supabase.storage.from("course-pdfs").getPublicUrl(pdfPath);
+    return data?.publicUrl;
   };
 
   // Filter library items
@@ -197,45 +167,36 @@ export default function StudentLibraryPage() {
     return matchesSearch && matchesSpecialty && matchesDifficulty && matchesYear;
   });
 
-  // Filter public courses
-  const filteredPublicCourses = publicCourses.filter((course) => {
-    const matchesSearch =
-      course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      course.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesSpecialty =
-      specialtyFilter === "All Specialties" || course.specialty === specialtyFilter;
-    const matchesDifficulty =
-      difficultyFilter === "all" || course.difficulty === difficultyFilter;
-    const matchesYear =
-      yearFilter === "all" || course.target_year === yearFilter;
-
-    return matchesSearch && matchesSpecialty && matchesDifficulty && matchesYear;
-  });
-
   const featuredItems = filteredLibraryItems.filter((item) => item.is_featured);
   const regularItems = filteredLibraryItems.filter((item) => !item.is_featured);
 
-  // Generate course from library item
-  const handleGenerateFromLibrary = async (item: LibraryItem) => {
+  // Generate course from PDF
+  const handleGenerateFromPdf = async (item: LibraryItem) => {
     if (!studentId) {
       alert("Please log in to generate courses");
       return;
     }
 
     setGenerating(true);
+    setGenerationError("");
+
     try {
-      // Call AI to generate course based on library item
-      const response = await fetch("/api/courses/generate-student", {
+      const pdfUrl = getPdfUrl(item.pdf_storage_path);
+      
+      const response = await fetch("/api/courses/generate-from-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topic: item.title,
+          pdfUrl,
+          pdfName: item.pdf_name,
+          title: item.title,
           specialty: item.specialty,
           difficulty: item.difficulty,
           targetYear: item.target_year,
           tags: item.tags,
           durationWeeks: item.estimated_duration_weeks,
           studentId: studentId,
+          libraryItemId: item.id,
         }),
       });
 
@@ -255,42 +216,9 @@ export default function StudentLibraryPage() {
       router.push(`/student/courses/${data.courseId}`);
     } catch (error: any) {
       console.error("Generation error:", error);
-      alert(error.message || "Failed to generate course");
+      setGenerationError(error.message || "Failed to generate course");
     } finally {
       setGenerating(false);
-      setShowPreview(false);
-    }
-  };
-
-  // Enroll in public course
-  const handleEnrollInCourse = async (courseId: string) => {
-    if (!studentId) {
-      alert("Please log in to enroll");
-      return;
-    }
-
-    if (enrolledCourseIds.includes(courseId)) {
-      router.push(`/student/courses/${courseId}`);
-      return;
-    }
-
-    setEnrolling(true);
-    try {
-      const { error } = await supabase.from("course_enrollments").insert({
-        course_id: courseId,
-        student_id: studentId,
-        progress_percent: 0,
-      });
-
-      if (error) throw error;
-
-      setEnrolledCourseIds([...enrolledCourseIds, courseId]);
-      router.push(`/student/courses/${courseId}`);
-    } catch (error: any) {
-      console.error("Enrollment error:", error);
-      alert(error.message || "Failed to enroll");
-    } finally {
-      setEnrolling(false);
     }
   };
 
@@ -307,18 +235,123 @@ export default function StudentLibraryPage() {
     }
   };
 
+  const LibraryCard = ({ item, featured = false }: { item: LibraryItem; featured?: boolean }) => (
+    <Card
+      className={`overflow-hidden hover:shadow-lg transition-all cursor-pointer ${
+        featured ? "border-yellow-200" : ""
+      }`}
+      onClick={() => {
+        setPreviewItem(item);
+        setShowPreview(true);
+        setGenerationError("");
+      }}
+    >
+      <CardContent className="p-0">
+        <div className={`p-4 text-white ${
+          featured 
+            ? "bg-gradient-to-br from-yellow-400 to-orange-500" 
+            : "bg-gradient-to-br from-blue-500 to-cyan-500"
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="text-3xl">{item.thumbnail_emoji}</span>
+            <div className="flex items-center gap-2">
+              {item.pdf_name && (
+                <Badge className="bg-white/20 text-white text-xs">
+                  <FileText className="h-3 w-3 mr-1" />
+                  PDF
+                </Badge>
+              )}
+              {featured && (
+                <Badge className="bg-white/20 text-white text-xs">
+                  <Star className="h-3 w-3 mr-1" />
+                  Featured
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="p-4">
+          <h3 className="font-semibold text-gray-900 mb-1 line-clamp-1">
+            {item.title}
+          </h3>
+          <p className="text-sm text-gray-500 mb-3 line-clamp-2">
+            {item.description}
+          </p>
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <Badge variant="outline" className="text-xs">
+              {item.specialty}
+            </Badge>
+            <Badge className={`text-xs ${getDifficultyColor(item.difficulty)}`}>
+              {item.difficulty}
+            </Badge>
+          </div>
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {item.estimated_duration_weeks} weeks
+            </span>
+            <span className="flex items-center gap-1">
+              <GraduationCap className="h-3 w-3" />
+              {item.target_year}
+            </span>
+            {item.download_count > 0 && (
+              <span className="flex items-center gap-1">
+                <Download className="h-3 w-3" />
+                {item.download_count}
+              </span>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Course Library</h1>
-          <p className="text-gray-500">Browse and enroll in courses from our repository</p>
+          <p className="text-gray-500">Browse medical PDFs and generate personalized courses</p>
         </div>
         <Button onClick={() => router.push("/student/generate")} className="gap-2">
           <Sparkles className="h-4 w-4" />
-          Generate Custom Course
+          Custom AI Course
         </Button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-3xl font-bold text-blue-600">{libraryItems.length}</p>
+            <p className="text-sm text-gray-500">Available PDFs</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-3xl font-bold text-yellow-600">
+              {libraryItems.filter((i) => i.is_featured).length}
+            </p>
+            <p className="text-sm text-gray-500">Featured</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-3xl font-bold text-green-600">
+              {[...new Set(libraryItems.map((i) => i.specialty))].length}
+            </p>
+            <p className="text-sm text-gray-500">Specialties</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-3xl font-bold text-purple-600">
+              {libraryItems.reduce((acc, i) => acc + (i.download_count || 0), 0)}
+            </p>
+            <p className="text-sm text-gray-500">Courses Generated</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Search & Filters */}
@@ -328,7 +361,7 @@ export default function StudentLibraryPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="Search courses, topics, tags..."
+                placeholder="Search by title, tags, or description..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -382,188 +415,44 @@ export default function StudentLibraryPage() {
         </div>
       ) : (
         <>
-          {/* Featured Courses */}
+          {/* Featured PDFs */}
           {featuredItems.length > 0 && (
             <div>
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Star className="h-5 w-5 text-yellow-500" />
-                Featured Courses
+                Featured Resources
               </h2>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {featuredItems.map((item) => (
-                  <Card
-                    key={item.id}
-                    className="overflow-hidden hover:shadow-lg transition-all cursor-pointer border-yellow-200"
-                    onClick={() => {
-                      setPreviewItem(item);
-                      setShowPreview(true);
-                    }}
-                  >
-                    <CardContent className="p-0">
-                      <div className="bg-gradient-to-br from-yellow-400 to-orange-500 p-4 text-white">
-                        <div className="flex items-center justify-between">
-                          <span className="text-3xl">{item.thumbnail_emoji}</span>
-                          <Badge className="bg-white/20 text-white">Featured</Badge>
-                        </div>
-                      </div>
-                      <div className="p-4">
-                        <h3 className="font-semibold text-gray-900 mb-1 line-clamp-1">
-                          {item.title}
-                        </h3>
-                        <p className="text-sm text-gray-500 mb-3 line-clamp-2">
-                          {item.description}
-                        </p>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="outline" className="text-xs">
-                            {item.specialty}
-                          </Badge>
-                          <Badge className={`text-xs ${getDifficultyColor(item.difficulty)}`}>
-                            {item.difficulty}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {item.estimated_duration_weeks}w
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <GraduationCap className="h-3 w-3" />
-                            {item.target_year}
-                          </span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <LibraryCard key={item.id} item={item} featured />
                 ))}
               </div>
             </div>
           )}
 
-          {/* All Library Courses */}
+          {/* All PDFs */}
           {regularItems.length > 0 && (
             <div>
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <BookOpen className="h-5 w-5 text-blue-600" />
-                Course Templates
+                All Resources
               </h2>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {regularItems.map((item) => (
-                  <Card
-                    key={item.id}
-                    className="overflow-hidden hover:shadow-lg transition-all cursor-pointer"
-                    onClick={() => {
-                      setPreviewItem(item);
-                      setShowPreview(true);
-                    }}
-                  >
-                    <CardContent className="p-0">
-                      <div className="bg-gradient-to-br from-blue-500 to-cyan-500 p-4 text-white">
-                        <span className="text-3xl">{item.thumbnail_emoji}</span>
-                      </div>
-                      <div className="p-4">
-                        <h3 className="font-semibold text-gray-900 mb-1 line-clamp-1">
-                          {item.title}
-                        </h3>
-                        <p className="text-sm text-gray-500 mb-3 line-clamp-2">
-                          {item.description}
-                        </p>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="outline" className="text-xs">
-                            {item.specialty}
-                          </Badge>
-                          <Badge className={`text-xs ${getDifficultyColor(item.difficulty)}`}>
-                            {item.difficulty}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {item.estimated_duration_weeks}w
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <GraduationCap className="h-3 w-3" />
-                            {item.target_year}
-                          </span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <LibraryCard key={item.id} item={item} />
                 ))}
-              </div>
-            </div>
-          )}
-
-          {/* Public Courses from Professors */}
-          {filteredPublicCourses.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <GraduationCap className="h-5 w-5 text-purple-600" />
-                Professor-Created Courses
-              </h2>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredPublicCourses.map((course) => {
-                  const isEnrolled = enrolledCourseIds.includes(course.id);
-                  return (
-                    <Card
-                      key={course.id}
-                      className="overflow-hidden hover:shadow-lg transition-all"
-                    >
-                      <CardContent className="p-0">
-                        <div className="bg-gradient-to-br from-purple-500 to-pink-500 p-4 text-white">
-                          <div className="flex items-center justify-between">
-                            <span className="text-3xl">{course.image || "📚"}</span>
-                            {isEnrolled && (
-                              <Badge className="bg-white/20 text-white">Enrolled</Badge>
-                            )}
-                          </div>
-                        </div>
-                        <div className="p-4">
-                          <h3 className="font-semibold text-gray-900 mb-1 line-clamp-1">
-                            {course.title}
-                          </h3>
-                          <p className="text-sm text-gray-500 mb-3 line-clamp-2">
-                            {course.description}
-                          </p>
-                          <div className="flex items-center gap-2 mb-3 text-xs text-gray-500">
-                            <span>{course.total_lessons || 0} lessons</span>
-                            <span>•</span>
-                            <span>{course.duration_weeks}w</span>
-                          </div>
-                          <Button
-                            className="w-full"
-                            variant={isEnrolled ? "outline" : "default"}
-                            onClick={() => handleEnrollInCourse(course.id)}
-                            disabled={enrolling}
-                          >
-                            {isEnrolled ? (
-                              <>
-                                <Eye className="h-4 w-4 mr-2" />
-                                View Course
-                              </>
-                            ) : (
-                              <>
-                                <BookmarkPlus className="h-4 w-4 mr-2" />
-                                Enroll Now
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
               </div>
             </div>
           )}
 
           {/* Empty State */}
-          {filteredLibraryItems.length === 0 && filteredPublicCourses.length === 0 && (
+          {filteredLibraryItems.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center">
-                <BookOpen className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No courses found</h3>
+                <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No PDFs found</h3>
                 <p className="text-gray-500 mb-4">
-                  Try adjusting your filters or generate a custom course
+                  Try adjusting your filters or create a custom course
                 </p>
                 <Button onClick={() => router.push("/student/generate")}>
                   <Sparkles className="h-4 w-4 mr-2" />
@@ -615,13 +504,41 @@ export default function StudentLibraryPage() {
               </div>
             )}
 
+            {/* PDF Preview Link */}
+            {previewItem?.pdf_storage_path && (
+              <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                <FileText className="h-5 w-5 text-red-500" />
+                <span className="text-sm text-gray-700 flex-1 truncate">
+                  {previewItem.pdf_name}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const url = getPdfUrl(previewItem.pdf_storage_path);
+                    if (url) window.open(url, "_blank");
+                  }}
+                >
+                  <Eye className="h-4 w-4 mr-1" />
+                  View PDF
+                </Button>
+              </div>
+            )}
+
             <div className="bg-blue-50 p-4 rounded-lg">
               <p className="text-sm text-blue-800">
-                <strong>How it works:</strong> AI will generate a personalized course based on
-                this template, complete with lessons, key points, and quizzes tailored to your
-                learning level.
+                <strong>How it works:</strong> AI will analyze this PDF and generate a
+                personalized course with modules, lessons, key points, and quizzes. You'll be
+                automatically enrolled upon creation.
               </p>
             </div>
+
+            {generationError && (
+              <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+                {generationError}
+              </div>
+            )}
           </div>
 
           <DialogFooter>
@@ -629,13 +546,13 @@ export default function StudentLibraryPage() {
               Cancel
             </Button>
             <Button
-              onClick={() => previewItem && handleGenerateFromLibrary(previewItem)}
+              onClick={() => previewItem && handleGenerateFromPdf(previewItem)}
               disabled={generating}
             >
               {generating ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generating...
+                  Generating Course...
                 </>
               ) : (
                 <>
