@@ -23,8 +23,10 @@ import {
 const navigation = [
   { name: "Dashboard", href: "/student", icon: LayoutDashboard },
   { name: "My Courses", href: "/student/courses", icon: BookOpen },
+  { name: "Course Library", href: "/student/library", icon: Library },
+  { name: "AI Generator", href: "/student/generate", icon: Sparkles },
   { name: "AI Tutor", href: "/student/ai-tutor", icon: Brain },
-  { name: "Symptom Analyzer", href: "/student/analyzer", icon: Stethoscope },
+  // { name: "Symptom Analyzer", href: "/student/analyzer", icon: Stethoscope }, // Hidden for now
   { name: "Assessments", href: "/student/assessments", icon: ClipboardList },
   { name: "Consultations", href: "/student/consultations", icon: Calendar },
   { name: "Profile", href: "/student/profile", icon: User },
