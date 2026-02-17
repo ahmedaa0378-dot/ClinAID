@@ -188,40 +188,40 @@ export default function ReportPage() {
         }
 
         // Fetch real professors from database
-try {
-  const { data: professorsData, error: profError } = await supabase
-    .from("professors")
-    .select(`
-      id,
-      specialty,
-      title,
-      user:users!professors_user_id_fkey (
-        id,
-        full_name,
-        email
-      )
-    `)
-    .eq("is_accepting_reviews", true);
+        try {
+          const { data: professorsData, error: profError } = await supabase
+            .from("professors")
+            .select(`
+              id,
+              specialty,
+              title,
+              user:users!professors_user_id_fkey (
+                id,
+                full_name,
+                email
+              )
+            `)
+            .eq("is_accepting_reviews", true);
 
-  if (!profError && professorsData && professorsData.length > 0) {
-    setProfessors(professorsData.map(p => ({
-      id: p.id,
-      user_id: (p.user as any)?.id || p.id,
-      specialty: p.specialty || "Medical Education",
-      title: p.title || "Dr.",
-      user: { 
-        full_name: (p.user as any)?.full_name || "Professor", 
-        email: (p.user as any)?.email || "" 
-      }
-    })));
-  } else {
-    console.log("No professors found or error:", profError);
-    setProfessors([]);
-  }
-} catch (e) {
-  console.error("Error fetching professors:", e);
-  setProfessors([]);
-}
+          if (!profError && professorsData && professorsData.length > 0) {
+            setProfessors(professorsData.map(p => ({
+              id: p.id,
+              user_id: (p.user as any)?.id || p.id,
+              specialty: p.specialty || "Medical Education",
+              title: p.title || "Dr.",
+              user: { 
+                full_name: (p.user as any)?.full_name || "Professor", 
+                email: (p.user as any)?.email || "" 
+              }
+            })));
+          } else {
+            console.log("No professors found or error:", profError);
+            setProfessors([]);
+          }
+        } catch (e) {
+          console.error("Error fetching professors:", e);
+          setProfessors([]);
+        }
 
       } catch (err: any) {
         setError(err.message || "Failed to load report data");
@@ -267,7 +267,7 @@ try {
           .insert({
             id: sessionId,
             student_id: studentId,
-            student_level: "MS3", // MS3, MS4, R1, R2, R3
+            student_level: "MS3",
             status: "completed",
             initial_complaint: regionName,
             started_at: new Date().toISOString(),
@@ -287,6 +287,10 @@ try {
       }
 
       // 2. Create clinical_reports record
+      // Extract supporting findings and red flags safely
+      const supportingFindings = (diagnosis as any)?.supporting_findings || [];
+      const redFlags = (diagnosis as any)?.red_flags || [];
+
       const reportData = {
         session_id: finalSessionId,
         report_title: `${getDiagnosisName(diagnosis)} - Clinical Analysis`,
@@ -301,8 +305,8 @@ try {
         assessment: {
           primary_diagnosis: getDiagnosisName(diagnosis),
           confidence: getConfidencePercent(diagnosis),
-          supporting_findings: diagnosis?.supporting_findings || diagnosis?.supportingFindings || [],
-          red_flags: diagnosis?.red_flags || diagnosis?.redFlags || [],
+          supporting_findings: supportingFindings,
+          red_flags: redFlags,
         },
         plan: {
           note: "Treatment plan and follow-up recommendations would be documented here."
@@ -367,8 +371,6 @@ try {
 
   // Handle PDF Download
   const handleDownloadPDF = () => {
-    // For now, create a simple text download
-    // In production, use a PDF library like jsPDF or html2pdf
     const content = `
 CLINICAL REPORT
 ===============
@@ -533,7 +535,7 @@ ${studentNotes || 'None'}
                     symptoms.map((s, index) => (
                       <Badge key={s.id || index} variant={s.isRedFlag ? "destructive" : "secondary"}>
                         {s.name}
-                        {(s.isRedFlag) && <AlertTriangle className="h-3 w-3 ml-1" />}
+                        {s.isRedFlag && <AlertTriangle className="h-3 w-3 ml-1" />}
                       </Badge>
                     ))
                   ) : (
