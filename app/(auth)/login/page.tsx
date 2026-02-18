@@ -22,14 +22,6 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loginSuccess, setLoginSuccess] = useState<{ name: string; path: string } | null>(null);
 
-  // Helper function with timeout
-  const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Request timed out")), ms)
-    );
-    return Promise.race([promise, timeout]);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -44,12 +36,12 @@ export default function LoginPage() {
     console.log("1. Starting login for:", email);
 
     try {
-      // Sign in with Supabase Auth (10 second timeout)
+      // Sign in with Supabase Auth
       console.log("2. Calling supabase.auth.signInWithPassword...");
-      const { data: authData, error: authError } = await withTimeout(
-        supabase.auth.signInWithPassword({ email, password }),
-        10000
-      );
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
       console.log("3. Auth response:", { 
         userId: authData?.user?.id, 
@@ -78,64 +70,56 @@ export default function LoginPage() {
 
       console.log("4. Auth successful, user ID:", authData.user.id);
 
-      // Check if user exists in our users table (5 second timeout)
+      // Try to fetch user from database, but don't block on failure
       console.log("5. Fetching user from database...");
-      let userData = null;
+      let userData: any = null;
       
       try {
-        const { data, error: userError } = await withTimeout(
-          supabase
-            .from("users")
-            .select("*")
-            .eq("id", authData.user.id)
-            .single(),
-          5000
-        );
+        const userResponse = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", authData.user.id)
+          .single();
         
-        if (!userError && data) {
-          userData = data;
+        if (!userResponse.error && userResponse.data) {
+          userData = userResponse.data;
         }
         console.log("6. User fetch result:", { found: !!userData, role: userData?.role });
-      } catch (fetchError: any) {
-        console.log("6. User fetch timed out or failed, using email to determine role");
+      } catch (fetchError) {
+        console.log("6. User fetch failed, will use email to determine role");
       }
 
-      // If user doesn't exist or fetch failed, determine role from email
+      // If user doesn't exist, try to create them
       if (!userData) {
-        console.log("7. Creating/determining user profile...");
+        console.log("7. User not found, creating profile...");
         const role = email.toLowerCase().includes("professor") ? "professor" : "student";
         
         try {
-          const { data: newUser, error: createError } = await withTimeout(
-            supabase
-              .from("users")
-              .upsert({
-                id: authData.user.id,
-                email: authData.user.email,
-                full_name: role === "professor" ? "Dr. Ahmed Khan" : "John Smith",
-                role: role,
-                status: "approved",
-              })
-              .select()
-              .single(),
-            5000
-          );
+          const createResponse = await supabase
+            .from("users")
+            .upsert({
+              id: authData.user.id,
+              email: authData.user.email,
+              full_name: role === "professor" ? "Dr. Ahmed Khan" : "John Smith",
+              role: role,
+              status: "approved",
+            })
+            .select()
+            .single();
 
-          if (!createError && newUser) {
-            userData = newUser;
+          if (!createResponse.error && createResponse.data) {
+            userData = createResponse.data;
           }
         } catch (upsertError) {
-          console.log("8. Upsert failed, using default role");
-          // Use default based on email
-          userData = {
-            role: email.toLowerCase().includes("professor") ? "professor" : "student",
-            full_name: email.toLowerCase().includes("professor") ? "Professor" : "Student",
-          };
+          console.log("8. Upsert failed, using default role from email");
         }
       }
 
-      // Determine redirect path based on role
+      // Determine role - fallback to email-based detection
       const userRole = userData?.role || (email.toLowerCase().includes("professor") ? "professor" : "student");
+      const userName = userData?.full_name || (userRole === "professor" ? "Professor" : "Student");
+
+      // Determine redirect path based on role
       const redirectPath =
         userRole === "professor" ? "/professor" :
         userRole === "student" ? "/student" :
@@ -147,7 +131,7 @@ export default function LoginPage() {
 
       // Set success state with redirect info
       setLoginSuccess({
-        name: userData?.full_name || "User",
+        name: userName,
         path: redirectPath,
       });
       
@@ -156,11 +140,7 @@ export default function LoginPage() {
 
     } catch (err: any) {
       console.error("CATCH ERROR:", err);
-      if (err.message === "Request timed out") {
-        setError("Connection timed out. Please check your internet and try again.");
-      } else {
-        setError("An unexpected error occurred: " + (err.message || "Unknown error"));
-      }
+      setError("An unexpected error occurred. Please try again.");
       setIsLoading(false);
     }
   };
