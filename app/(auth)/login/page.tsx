@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
   Mail,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -33,23 +35,15 @@ export default function LoginPage() {
     }
 
     setIsLoading(true);
-    console.log("1. Starting login for:", email);
 
     try {
-      // Sign in with Supabase Auth
-      console.log("2. Calling supabase.auth.signInWithPassword...");
+      // Step 1: Authenticate with Supabase
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      console.log("3. Auth response:", { 
-        userId: authData?.user?.id, 
-        error: authError?.message 
-      });
-
       if (authError) {
-        console.log("4. Auth error:", authError.message);
         if (authError.message.includes("Invalid login credentials")) {
           setError("Invalid email or password");
         } else if (authError.message.includes("Email not confirmed")) {
@@ -62,84 +56,65 @@ export default function LoginPage() {
       }
 
       if (!authData.user) {
-        console.log("4. No user in auth response");
         setError("Authentication failed. Please try again.");
         setIsLoading(false);
         return;
       }
 
-      console.log("4. Auth successful, user ID:", authData.user.id);
+      // Step 2: Determine role from email (fast, no DB call)
+      const emailLower = email.toLowerCase();
+      let userRole = "student";
+      let userName = "Student";
 
-      // Try to fetch user from database, but don't block on failure
-      console.log("5. Fetching user from database...");
-      let userData: any = null;
-      
+      if (emailLower.includes("professor") || emailLower.includes("prof")) {
+        userRole = "professor";
+        userName = "Professor";
+      } else if (emailLower.includes("admin")) {
+        userRole = "admin";
+        userName = "Admin";
+      }
+
+      // Step 3: Try to get actual user data (with 3 second timeout)
       try {
-        const userResponse = await supabase
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+        const { data: userData } = await supabase
           .from("users")
-          .select("*")
+          .select("role, full_name")
           .eq("id", authData.user.id)
-          .single();
-        
-        if (!userResponse.error && userResponse.data) {
-          userData = userResponse.data;
+          .single()
+          .abortSignal(controller.signal);
+
+        clearTimeout(timeoutId);
+
+        if (userData) {
+          userRole = userData.role || userRole;
+          userName = userData.full_name || userName;
         }
-        console.log("6. User fetch result:", { found: !!userData, role: userData?.role });
-      } catch (fetchError) {
-        console.log("6. User fetch failed, will use email to determine role");
+      } catch {
+        // Timeout or error - continue with email-based role
+        console.log("DB fetch skipped, using email-based role");
       }
 
-      // If user doesn't exist, try to create them
-      if (!userData) {
-        console.log("7. User not found, creating profile...");
-        const role = email.toLowerCase().includes("professor") ? "professor" : "student";
-        
-        try {
-          const createResponse = await supabase
-            .from("users")
-            .upsert({
-              id: authData.user.id,
-              email: authData.user.email,
-              full_name: role === "professor" ? "Dr. Ahmed Khan" : "John Smith",
-              role: role,
-              status: "approved",
-            })
-            .select()
-            .single();
-
-          if (!createResponse.error && createResponse.data) {
-            userData = createResponse.data;
-          }
-        } catch (upsertError) {
-          console.log("8. Upsert failed, using default role from email");
-        }
-      }
-
-      // Determine role - fallback to email-based detection
-      const userRole = userData?.role || (email.toLowerCase().includes("professor") ? "professor" : "student");
-      const userName = userData?.full_name || (userRole === "professor" ? "Professor" : "Student");
-
-      // Determine redirect path based on role
+      // Step 4: Determine redirect path
       const redirectPath =
         userRole === "professor" ? "/professor" :
-        userRole === "student" ? "/student" :
         userRole === "college_admin" ? "/admin" :
         userRole === "super_admin" ? "/super-admin" :
         "/student";
 
-      console.log("9. Login complete! Role:", userRole, "Path:", redirectPath);
-
-      // Set success state with redirect info
-      setLoginSuccess({
-        name: userName,
-        path: redirectPath,
-      });
-      
+      // Step 5: Show success and redirect
+      setLoginSuccess({ name: userName, path: redirectPath });
       setIsLoading(false);
-      console.log("10. Success state set, showing welcome screen");
+
+      // Auto-redirect after 1 second
+      setTimeout(() => {
+        router.push(redirectPath);
+      }, 1000);
 
     } catch (err: any) {
-      console.error("CATCH ERROR:", err);
+      console.error("Login error:", err);
       setError("An unexpected error occurred. Please try again.");
       setIsLoading(false);
     }
@@ -152,7 +127,7 @@ export default function LoginPage() {
     setError("");
   };
 
-  // Show success screen with link after successful login
+  // Success Screen
   if (loginSuccess) {
     return (
       <div className="text-center">
@@ -160,7 +135,8 @@ export default function LoginPage() {
           <CheckCircle2 className="h-10 w-10 text-green-500" />
         </div>
         <h1 className="text-2xl font-bold text-white mb-2">Welcome back!</h1>
-        <p className="text-gray-400 mb-8">{loginSuccess.name}</p>
+        <p className="text-gray-400 mb-4">{loginSuccess.name}</p>
+        <p className="text-emerald-400 text-sm mb-8">Redirecting to dashboard...</p>
         
         <Link
           href={loginSuccess.path}
@@ -169,10 +145,6 @@ export default function LoginPage() {
           Go to Dashboard
           <ArrowRight className="h-5 w-5" />
         </Link>
-
-        <p className="text-gray-500 text-sm mt-6">
-          Click the button above to continue
-        </p>
       </div>
     );
   }
@@ -276,7 +248,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Test Credentials - Clickable */}
+      {/* Test Credentials */}
       <div className="space-y-3">
         <button
           type="button"
