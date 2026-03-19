@@ -121,7 +121,7 @@ REQUIREMENTS:
         response_format: { type: "json_object" },
       }),
     },
-    30000
+    60000
   );
 
   if (!response.ok) {
