@@ -26,6 +26,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Diagnosis is required" }, { status: 400 });
     }
 
+    if (!OPENAI_API_KEY) {
+      return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
+    }
+
     const symptomsList = symptoms?.map((s: any) => s.name).join(", ") || "Not specified";
     const redFlags = symptoms?.filter((s: any) => s.isRedFlag || s.is_red_flag).map((s: any) => s.name).join(", ") || "None";
     const diagnosisName = diagnosis.name || diagnosis.diagnosis_name || diagnosis.diagnosisName || "Unknown";
