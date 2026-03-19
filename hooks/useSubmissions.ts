@@ -224,46 +224,29 @@ export function useSubmissions() {
 
       if (subError) throw subError;
 
-      // Get feedback if exists
-      const { data: feedback } = await supabase
-        .from("submission_feedback")
-        .select("*")
-        .eq("submission_id", submissionId)
-        .single();
+      // Get feedback and session data in parallel
+      const sessionId = submission.clinical_reports?.session_id;
 
-      // Get full session data
-      let sessionData = null;
-      if (submission.clinical_reports?.session_id) {
-        const { data: session } = await supabase
-          .from("analysis_sessions")
+      const [{ data: feedback }, sessionData] = await Promise.all([
+        supabase
+          .from("submission_feedback")
           .select("*")
-          .eq("id", submission.clinical_reports.session_id)
-          .single();
-
-        const { data: symptoms } = await supabase
-          .from("session_symptoms")
-          .select("*")
-          .eq("session_id", submission.clinical_reports.session_id);
-
-        const { data: steps } = await supabase
-          .from("session_steps")
-          .select("*")
-          .eq("session_id", submission.clinical_reports.session_id)
-          .order("step_number");
-
-        const { data: diagnoses } = await supabase
-          .from("differential_diagnoses")
-          .select("*")
-          .eq("session_id", submission.clinical_reports.session_id)
-          .order("display_order");
-
-        sessionData = {
-          session,
-          symptoms: symptoms || [],
-          steps: steps || [],
-          diagnoses: diagnoses || [],
-        };
-      }
+          .eq("submission_id", submissionId)
+          .single(),
+        sessionId
+          ? Promise.all([
+              supabase.from("analysis_sessions").select("*").eq("id", sessionId).single(),
+              supabase.from("session_symptoms").select("*").eq("session_id", sessionId),
+              supabase.from("session_steps").select("*").eq("session_id", sessionId).order("step_number"),
+              supabase.from("differential_diagnoses").select("*").eq("session_id", sessionId).order("display_order"),
+            ]).then(([{ data: session }, { data: symptoms }, { data: steps }, { data: diagnoses }]) => ({
+              session,
+              symptoms: symptoms || [],
+              steps: steps || [],
+              diagnoses: diagnoses || [],
+            }))
+          : Promise.resolve(null),
+      ]);
 
       return {
         submission,
