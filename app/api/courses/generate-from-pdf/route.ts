@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
@@ -83,26 +98,30 @@ Create 4 modules with 3 lessons each. Return ONLY valid JSON.`;
 
     console.log("Calling OpenAI...");
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+    const response = await fetchWithTimeout(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: "You are a medical educator. Return only valid JSON, no markdown or code blocks.",
+            },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.7,
+          max_tokens: 6000,
+          response_format: { type: "json_object" },
+        }),
       },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: "You are a medical educator. Return only valid JSON, no markdown or code blocks.",
-          },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.7,
-        max_tokens: 6000,
-        response_format: { type: "json_object" },
-      }),
-    });
+      30000
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -163,11 +182,13 @@ Create 4 modules with 3 lessons each. Return ONLY valid JSON.`;
 
     console.log("Course saved with ID:", courseData.id);
 
-    // Insert lessons
+    // Batch insert lessons
+    const allLessons: any[] = [];
     let lessonIndex = 0;
+
     for (const module of courseStructure.modules || []) {
       for (const lesson of module.lessons || []) {
-        const { error: lessonError } = await supabase.from("lessons").insert({
+        allLessons.push({
           course_id: courseData.id,
           title: lesson.title,
           description: lesson.description || "",
@@ -177,10 +198,13 @@ Create 4 modules with 3 lessons each. Return ONLY valid JSON.`;
           quiz_questions: lesson.quiz_questions || [],
           order_index: lessonIndex++,
         });
+      }
+    }
 
-        if (lessonError) {
-          console.error("Lesson insert error:", lessonError);
-        }
+    if (allLessons.length > 0) {
+      const { error: lessonsError } = await supabase.from("lessons").insert(allLessons);
+      if (lessonsError) {
+        console.error("Lessons batch insert error:", lessonsError);
       }
     }
 
