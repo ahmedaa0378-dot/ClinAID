@@ -7,6 +7,21 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -23,22 +38,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
     }
 
-    // Fetch course details
-    const { data: course, error: courseError } = await supabase
-      .from("courses")
-      .select("*")
-      .eq("id", courseId)
-      .single();
+    // Fetch course details and lessons in parallel
+    const [
+      { data: course, error: courseError },
+      { data: lessons },
+    ] = await Promise.all([
+      supabase.from("courses").select("*").eq("id", courseId).single(),
+      supabase.from("lessons").select("title, key_points").eq("course_id", courseId),
+    ]);
 
     if (courseError || !course) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
-
-    // Fetch lessons for more context
-    const { data: lessons } = await supabase
-      .from("lessons")
-      .select("title, key_points")
-      .eq("course_id", courseId);
 
     const lessonTopics = lessons?.map(l => l.title).join(", ") || "";
     const keyPoints = lessons?.flatMap(l => l.key_points || []).join(", ") || "";
@@ -77,26 +88,30 @@ REQUIREMENTS:
 6. Provide detailed explanations for learning
 7. Return ONLY valid JSON`;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+    const response = await fetchWithTimeout(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: "You are a medical education expert creating assessment questions. Return only valid JSON.",
+            },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.7,
+          max_tokens: 4000,
+          response_format: { type: "json_object" },
+        }),
       },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: "You are a medical education expert creating assessment questions. Return only valid JSON.",
-          },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.7,
-        max_tokens: 4000,
-        response_format: { type: "json_object" },
-      }),
-    });
+      30000
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
