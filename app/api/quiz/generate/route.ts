@@ -56,21 +56,28 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
   ]
 }`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are a medical education expert. Always respond with valid JSON only, no markdown formatting or code blocks.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      temperature: 0.7,
-      max_tokens: 4000,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    let completion;
+    try {
+      completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "You are a medical education expert. Always respond with valid JSON only, no markdown formatting or code blocks.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 4000,
+      }, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     const content = completion.choices[0]?.message?.content;
 
