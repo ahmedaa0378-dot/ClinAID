@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
@@ -36,6 +36,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const profileCache = useRef<{ userId: string; profile: any; timestamp: number } | null>(null);
+  const CACHE_TTL = 60000; // 1 minute
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -66,6 +68,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     try {
+      // Return cached profile if still fresh
+      if (
+        profileCache.current &&
+        profileCache.current.userId === userId &&
+        Date.now() - profileCache.current.timestamp < CACHE_TTL
+      ) {
+        setProfile(profileCache.current.profile);
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("users")
         .select("*")
@@ -73,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (error) throw error;
+      profileCache.current = { userId, profile: data, timestamp: Date.now() };
       setProfile(data);
     } catch (error) {
       console.error("Error fetching profile:", error);
