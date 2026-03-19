@@ -38,12 +38,16 @@ export async function POST(request: NextRequest) {
 
 // Get symptoms for a body region
 async function getSymptoms(regionName: string, regionDisplayName: string) {
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: `You are a medical education AI. Generate realistic symptoms for the specified body region.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  let response;
+  try {
+    response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a medical education AI. Generate realistic symptoms for the specified body region.
 Return ONLY valid JSON with this structure:
 {
   "symptoms": [
@@ -57,15 +61,18 @@ Return ONLY valid JSON with this structure:
   ]
 }
 Include 8-10 symptoms. Mark dangerous symptoms as isRedFlag: true.`
-      },
-      {
-        role: "user",
-        content: `Generate symptoms for: ${regionDisplayName} (${regionName})`
-      }
-    ],
-    temperature: 0.7,
-    response_format: { type: "json_object" },
-  });
+        },
+        {
+          role: "user",
+          content: `Generate symptoms for: ${regionDisplayName} (${regionName})`
+        }
+      ],
+      temperature: 0.7,
+      response_format: { type: "json_object" },
+    }, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   return JSON.parse(response.choices[0].message.content || "{}");
 }
@@ -78,12 +85,16 @@ async function getQuestions(
 ) {
   const symptomList = symptoms.map((s) => s.name).join(", ");
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: `You are a medical education AI teaching clinical reasoning.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  let response;
+  try {
+    response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a medical education AI teaching clinical reasoning.
 Return ONLY valid JSON with this structure:
 {
   "questions": [
@@ -98,15 +109,18 @@ Return ONLY valid JSON with this structure:
   ]
 }
 Generate exactly 5 questions with 4 options each.`
-      },
-      {
-        role: "user",
-        content: `Patient with ${regionName} symptoms: ${symptomList}. Generate clinical assessment questions.`
-      }
-    ],
-    temperature: 0.7,
-    response_format: { type: "json_object" },
-  });
+        },
+        {
+          role: "user",
+          content: `Patient with ${regionName} symptoms: ${symptomList}. Generate clinical assessment questions.`
+        }
+      ],
+      temperature: 0.7,
+      response_format: { type: "json_object" },
+    }, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   return JSON.parse(response.choices[0].message.content || "{}");
 }
@@ -121,12 +135,16 @@ async function getDiagnosis(
   const symptomList = symptoms.map((s) => `${s.name}${s.isRedFlag ? " (RED FLAG)" : ""}`).join(", ");
   const answersText = Object.entries(answers).map(([q, a]) => `${q}: ${a}`).join("\n");
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: `You are a medical education AI providing differential diagnoses.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  let response;
+  try {
+    response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a medical education AI providing differential diagnoses.
 Return ONLY valid JSON with this structure:
 {
   "diagnoses": [
@@ -147,15 +165,18 @@ Return ONLY valid JSON with this structure:
   "recommendedWorkup": ["test1"]
 }
 Provide 3-4 diagnoses ranked by probability.`
-      },
-      {
-        role: "user",
-        content: `Region: ${regionName}\nSymptoms: ${symptomList}\nHistory:\n${answersText}\n\nGenerate differential diagnoses.`
-      }
-    ],
-    temperature: 0.7,
-    response_format: { type: "json_object" },
-  });
+        },
+        {
+          role: "user",
+          content: `Region: ${regionName}\nSymptoms: ${symptomList}\nHistory:\n${answersText}\n\nGenerate differential diagnoses.`
+        }
+      ],
+      temperature: 0.7,
+      response_format: { type: "json_object" },
+    }, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   return JSON.parse(response.choices[0].message.content || "{}");
 }
