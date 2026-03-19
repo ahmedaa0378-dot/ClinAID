@@ -56,16 +56,13 @@ export default function AITutorPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [apiKey, setApiKey] = useState("");
-  const [showApiKeyInput, setShowApiKeyInput] = useState(true);
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    const storedKey = localStorage.getItem("openai_api_key");
-    if (storedKey) {
-      setApiKey(storedKey);
-      setShowApiKeyInput(false);
-    }
+    // No client-side API key allowed; disable stored key usage
+    setShowApiKeyInput(false);
   }, []);
 
   useEffect(() => {
@@ -78,16 +75,11 @@ export default function AITutorPage() {
     e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px";
   };
 
-  const saveApiKey = () => {
-    if (apiKey.trim()) {
-      localStorage.setItem("openai_api_key", apiKey.trim());
-      setShowApiKeyInput(false);
-    }
-  };
+  // client-side API key storage removed
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!input.trim() || isLoading || !apiKey) return;
+    if (!input.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -111,31 +103,19 @@ export default function AITutorPage() {
         content: msg.content,
       }));
 
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      const resp = await fetch("/api/ai/tutor", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            ...conversationHistory,
-            { role: "user", content: currentInput },
-          ],
-          temperature: 0.7,
-          max_tokens: 1500,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [ { role: "system", content: SYSTEM_PROMPT }, ...conversationHistory, { role: "user", content: currentInput } ] }),
       });
 
-      const data = await response.json();
+      const data = await resp.json();
 
-      if (data.error) {
-        throw new Error(data.error.message);
+      if (!resp.ok || data.error) {
+        throw new Error(data.error || "AI tutor failed");
       }
 
-      const aiContent = data.choices?.[0]?.message?.content || "Sorry, I couldn't generate a response.";
+      const aiContent = data.content || "Sorry, I couldn't generate a response.";
 
       const aiMessage: Message = {
         id: crypto.randomUUID(),
