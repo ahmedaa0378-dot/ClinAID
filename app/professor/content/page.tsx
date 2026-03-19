@@ -202,44 +202,15 @@ export default function ProfessorContentPage() {
       const chunks = chunkText(text, 1000, 200);
 
       // Get embeddings from OpenAI
-      const apiKey = localStorage.getItem("openai_api_key");
-      if (!apiKey) {
-        throw new Error("OpenAI API key not found. Please set it in AI Tutor first.");
-      }
+      // Send chunks to server to generate embeddings and store them
+      const resp = await fetch("/api/ai/embeddings/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contentItemId, chunks }),
+      });
 
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-
-        // Get embedding
-        const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: "text-embedding-3-small",
-            input: chunk,
-          }),
-        });
-
-        const embeddingData = await embeddingResponse.json();
-
-        if (embeddingData.error) {
-          throw new Error(embeddingData.error.message);
-        }
-
-        const embedding = embeddingData.data[0].embedding;
-
-        // Store in database
-        await supabase.from("content_embeddings").insert({
-          content_item_id: contentItemId,
-          chunk_text: chunk,
-          chunk_index: i,
-          embedding: embedding,
-          professor_id: user?.id,
-        });
-      }
+      const result = await resp.json();
+      if (!resp.ok || result.error) throw new Error(result.error || "Failed to generate embeddings");
 
       // Mark content as embedded
       await supabase
