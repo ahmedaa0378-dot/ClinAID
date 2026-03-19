@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
@@ -111,29 +126,33 @@ IMPORTANT REQUIREMENTS:
 10. Return ONLY the JSON object, nothing else`;
 
     // Call OpenAI API
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+    const response = await fetchWithTimeout(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: "You are an expert medical educator creating structured, evidence-based courses for medical students. Return only valid JSON, no markdown formatting, no code blocks, no explanations. Focus on clinical relevance and practical applications.",
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 8000,
+          response_format: { type: "json_object" },
+        }),
       },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert medical educator creating structured, evidence-based courses for medical students. Return only valid JSON, no markdown formatting, no code blocks, no explanations. Focus on clinical relevance and practical applications.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 8000,
-        response_format: { type: "json_object" },
-      }),
-    });
+      30000
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -197,37 +216,33 @@ IMPORTANT REQUIREMENTS:
 
     console.log("Course saved with ID:", courseData.id);
 
-// Insert lessons - BATCH INSERT (single DB call)
-const allLessons: any[] = [];
-let lessonIndex = 0;
+    // Batch insert lessons
+    const allLessons: any[] = [];
+    let lessonIndex = 0;
 
-for (const module of courseStructure.modules || []) {
-  for (const lesson of module.lessons || []) {
-    allLessons.push({
-      course_id: courseData.id,
-      title: lesson.title,
-      description: lesson.description,
-      content_markdown: lesson.content_markdown,
-      duration_minutes: lesson.duration_minutes || 30,
-      key_points: lesson.key_points || [],
-      quiz_questions: lesson.quiz_questions || [],
-      order_index: lessonIndex++,
-    });
-  }
-}
+    for (const module of courseStructure.modules || []) {
+      for (const lesson of module.lessons || []) {
+        allLessons.push({
+          course_id: courseData.id,
+          title: lesson.title,
+          description: lesson.description,
+          content_markdown: lesson.content_markdown,
+          duration_minutes: lesson.duration_minutes || 30,
+          key_points: lesson.key_points || [],
+          quiz_questions: lesson.quiz_questions || [],
+          order_index: lessonIndex++,
+        });
+      }
+    }
 
-// Single batch insert instead of N+1 inserts
-if (allLessons.length > 0) {
-  const { error: lessonsError } = await supabase
-    .from("lessons")
-    .insert(allLessons);
+    if (allLessons.length > 0) {
+      const { error: lessonsError } = await supabase.from("lessons").insert(allLessons);
+      if (lessonsError) {
+        console.error("Lessons batch insert error:", lessonsError);
+      }
+    }
 
-  if (lessonsError) {
-    console.error("Lessons batch insert error:", lessonsError);
-  }
-}
-
-console.log("Inserted", allLessons.length, "lessons");
+    console.log("Inserted", lessonIndex, "lessons");
 
     // Auto-enroll the student
     const { error: enrollError } = await supabase.from("course_enrollments").insert({
