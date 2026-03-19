@@ -197,28 +197,37 @@ IMPORTANT REQUIREMENTS:
 
     console.log("Course saved with ID:", courseData.id);
 
-    // Insert lessons
-    let lessonIndex = 0;
-    for (const module of courseStructure.modules || []) {
-      for (const lesson of module.lessons || []) {
-        const { error: lessonError } = await supabase.from("lessons").insert({
-          course_id: courseData.id,
-          title: lesson.title,
-          description: lesson.description,
-          content_markdown: lesson.content_markdown,
-          duration_minutes: lesson.duration_minutes || 30,
-          key_points: lesson.key_points || [],
-          quiz_questions: lesson.quiz_questions || [],
-          order_index: lessonIndex++,
-        });
+// Insert lessons - BATCH INSERT (single DB call)
+const allLessons: any[] = [];
+let lessonIndex = 0;
 
-        if (lessonError) {
-          console.error("Lesson insert error:", lessonError);
-        }
-      }
-    }
+for (const module of courseStructure.modules || []) {
+  for (const lesson of module.lessons || []) {
+    allLessons.push({
+      course_id: courseData.id,
+      title: lesson.title,
+      description: lesson.description,
+      content_markdown: lesson.content_markdown,
+      duration_minutes: lesson.duration_minutes || 30,
+      key_points: lesson.key_points || [],
+      quiz_questions: lesson.quiz_questions || [],
+      order_index: lessonIndex++,
+    });
+  }
+}
 
-    console.log("Inserted", lessonIndex, "lessons");
+// Single batch insert instead of N+1 inserts
+if (allLessons.length > 0) {
+  const { error: lessonsError } = await supabase
+    .from("lessons")
+    .insert(allLessons);
+
+  if (lessonsError) {
+    console.error("Lessons batch insert error:", lessonsError);
+  }
+}
+
+console.log("Inserted", allLessons.length, "lessons");
 
     // Auto-enroll the student
     const { error: enrollError } = await supabase.from("course_enrollments").insert({
