@@ -120,7 +120,7 @@ Create 4 modules with 3 lessons each. Return ONLY valid JSON.`;
           response_format: { type: "json_object" },
         }),
       },
-      30000
+      60000
     );
 
     if (!response.ok) {
