@@ -55,15 +55,8 @@ export default function AITutorPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    // No client-side API key allowed; disable stored key usage
-    setShowApiKeyInput(false);
-  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -74,8 +67,6 @@ export default function AITutorPage() {
     e.target.style.height = "auto";
     e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px";
   };
-
-  // client-side API key storage removed
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -130,7 +121,7 @@ export default function AITutorPage() {
       const errorMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: `Error: ${error.message || "Failed to get response. Please check your API key."}`,
+        content: `Error: ${error.message || "Failed to get response. Please try again later."}`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -155,36 +146,6 @@ export default function AITutorPage() {
     }
   };
 
-  if (showApiKeyInput) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-2xl flex items-center justify-center mb-6">
-          <Bot className="h-10 w-10 text-white" />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Setup AI Tutor</h2>
-        <p className="text-gray-500 mb-6 text-center max-w-md">
-          Enter your OpenAI API key to start using the AI Tutor.
-        </p>
-        <div className="w-full max-w-md space-y-4">
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-..."
-            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-          <button
-            onClick={saveApiKey}
-            disabled={!apiKey.trim()}
-            className="w-full py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-          >
-            Start Chatting
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
       <div className="flex items-center justify-between mb-6">
@@ -196,16 +157,6 @@ export default function AITutorPage() {
           <p className="text-gray-500">Your personal medical education assistant</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => {
-              localStorage.removeItem("openai_api_key");
-              setShowApiKeyInput(true);
-              setApiKey("");
-            }}
-            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm"
-          >
-            Change API Key
-          </button>
           <button
             onClick={handleNewChat}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
